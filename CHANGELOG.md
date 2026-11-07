@@ -1,5 +1,12 @@
 # 更新日志
 
+## v1.2.2 · 2026-11-07（本 Fork）
+
+### 变更
+
+- 按下未内置的按键时打印 `[CAST-MAP] 未知按键 usage=XX`，便于真机补齐映射表。
+- 新增 [docs/VERIFY-CHECKLIST.md](docs/VERIFY-CHECKLIST.md)：安装、日志关键字、usage 表、回退验证与排查步骤。
+
 ## v1.2.1 · 2026-11-07（本 Fork）
 
 ### 变更

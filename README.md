@@ -3,7 +3,7 @@
 > 本仓库是 [VincentKingHsu/vRemoter](https://github.com/VincentKingHsu/vRemoter) 的 Fork，由 TheShadow178 维护。
 > 原仓库保存 vRemoter 的源码、设计源稿、构建脚本与测试；本 Fork 修掉了 macOS 26 上 Chromecast 遥控器按键映射失效的问题，并移除了遥测依赖。
 
-[原项目](https://github.com/VincentKingHsu/vRemoter) · [原项目官网](https://vremoter.vincentstudio.org/) · 本 Fork 版本：`1.2.1`
+[原项目](https://github.com/VincentKingHsu/vRemoter) · [原项目官网](https://vremoter.vincentstudio.org/) · 本 Fork 版本：`1.2.2`
 
 ## 这个 Fork 修了什么
 
@@ -55,6 +55,8 @@ sudo ./uninstall-helper.sh
 
 > 每次升级本 Fork 的 App 后，建议重跑一次 `sudo ./install-helper.sh`，让 helper 与 App 的 XPC 协议保持一致。
 
+真机验证步骤、日志关键字、按键 usage 表与排查方法见 [docs/VERIFY-CHECKLIST.md](docs/VERIFY-CHECKLIST.md)。
+
 ## 已知限制
 
 - 只按 VID/PID 匹配，不校验设备名；同 VID/PID 的其他设备也会被接管。
@@ -74,7 +76,7 @@ vRemoter 把蓝牙语音遥控器变成 macOS 上的 Vibe Coding 控制器：遥
 
 Chromecast Remote 已实现语音键双模式：短按第一次打开、第二次关闭；长按时持续录音，松手自动关闭。APP 还提供按型号保存的按键映射，可把方向、确认、返回、Home、YouTube、Netflix、信源、音量等按键改为常用 macOS 操作。
 
-当前版本：`1.2.1`（本 Fork）
+当前版本：`1.2.2`（本 Fork）
 
 ## 1.2.1 变更（本 Fork）
 

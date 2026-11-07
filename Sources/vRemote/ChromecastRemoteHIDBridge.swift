@@ -229,11 +229,17 @@ final class ChromecastRemoteHIDBridge {
     }
 
     private func apply(buttonID: String, isDown: Bool) {
-        guard remappingEnabled,
-              let button = RemoteProfiles.chromecastButtons.first(
-                where: { $0.id == buttonID }
-              )
-        else { return }
+        guard remappingEnabled else { return }
+        guard let button = RemoteProfiles.chromecastButtons.first(
+            where: { $0.id == buttonID }
+        ) else {
+            // 未知 usage 一定要打印出来，方便真机上补齐映射表。
+            print(
+                "[CAST-MAP] 未知按键 usage=\(buttonID)；" +
+                "可补到 RemoteMappingSupport.chromecastButtons"
+            )
+            return
+        }
         let store = RemoteMappingStore.shared
         store.post(button: button, remote: .chromecast, isDown: isDown)
         print(
