@@ -3,7 +3,7 @@
 > 本仓库是 [VincentKingHsu/vRemoter](https://github.com/VincentKingHsu/vRemoter) 的 Fork，由 TheShadow178 维护。
 > 原仓库保存 vRemoter 的源码、设计源稿、构建脚本与测试；本 Fork 修掉了 macOS 26 上 Chromecast 遥控器按键映射失效的问题，并移除了遥测依赖。
 
-[原项目](https://github.com/VincentKingHsu/vRemoter) · [原项目官网](https://vremoter.vincentstudio.org/) · 本 Fork 版本：`1.2.0`
+[原项目](https://github.com/VincentKingHsu/vRemoter) · [原项目官网](https://vremoter.vincentstudio.org/) · 本 Fork 版本：`1.2.1`
 
 ## 这个 Fork 修了什么
 
@@ -74,7 +74,14 @@ vRemoter 把蓝牙语音遥控器变成 macOS 上的 Vibe Coding 控制器：遥
 
 Chromecast Remote 已实现语音键双模式：短按第一次打开、第二次关闭；长按时持续录音，松手自动关闭。APP 还提供按型号保存的按键映射，可把方向、确认、返回、Home、YouTube、Netflix、信源、音量等按键改为常用 macOS 操作。
 
-当前版本：`1.2.0`（本 Fork）
+当前版本：`1.2.1`（本 Fork）
+
+## 1.2.1 变更（本 Fork）
+
+- 音频输入改为「遥控器优先」：遥控器有音频流时只输出遥控器麦，不再与本地麦等权叠加。
+- 遥控器断开或没有音频流时自动回退本地麦克风，虚拟设备不会输出静音，会议软件等其它 App 不会因此失声。
+- 本地麦克风不再只认「内置麦」，按「内置麦 → 任意非虚拟输入设备」选择，并排除 vRemoteDr / MiRemoteV / BlackHole / Parrot 等回环设备。
+- 遥控器优先期间本地麦只保留最近 0.25 秒缓冲，回退接近实时。
 
 ## 1.2.0 修复（本 Fork）
 

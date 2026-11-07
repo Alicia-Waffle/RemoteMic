@@ -1,7 +1,7 @@
 // vRemote for macOS.
 //
 // 1. Supported remote voice key → matching Option toggle semantics
-// 2. Remote ATVV + Mac microphone → aligned mix → vRemoteDr 2ch → Doubao
+// 2. Remote ATVV + local microphone → remote-priority fallback → vRemoteDr 2ch → Doubao
 // 3. A physical Mac Option key controls the same remote microphone session
 //
 // macOS-only. Requires:

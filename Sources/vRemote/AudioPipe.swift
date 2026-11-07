@@ -1,12 +1,13 @@
 // vRemote dual-microphone audio pipe.
 //
-// MacBook microphone -> AVCaptureSession ----┐
-//                                             ├-> aligned equal mix -> vRemoteDr 2ch
-// X6 ATVV ADPCM -> decoded Int16 PCM --------┘
+// Remote microphone (ATVV ADPCM -> decoded Int16 PCM) ----┐
+//                                                        ├-> vRemoteDr 2ch
+// Local microphone (AVCaptureSession) -------------------┘
 //
-// Both microphones are peers. Neither source permanently wins or ducks the
-// other. The Mac path is delayed slightly to compensate for BLE transport
-// latency, then the two available signals are averaged and hard-limited.
+// The remote microphone has priority: while it is streaming, only its signal
+// is written to the virtual device. When it stops (remote disconnected or no
+// voice frames), the local microphone takes over automatically so that other
+// applications reading the virtual device never receive pure silence.
 
 import AVFoundation
 import AudioToolbox
@@ -31,14 +32,25 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     // it is input calibration, not source priority.
     private static let remoteGain: Float = 10.0
 
-    // The Mac capture path usually arrives before BLE voice frames. Keeping a
-    // small Mac backlog makes the same spoken syllable from both microphones
-    // meet in the same render window. This first experimental value is shown
-    // in logs and can be tuned from real recordings later.
+    // The local capture path is delayed only while the remote microphone is
+    // streaming, so that a fallback switch does not introduce a 120 ms jump
+    // when the remote microphone is idle.
     private static let macAlignmentDelaySeconds = 0.12
     private static let macAlignmentDelayFrames = Int(
         outputSampleRate * macAlignmentDelaySeconds
     )
+
+    // While the remote microphone has priority, only the newest part of the
+    // local backlog is kept, so a fallback starts close to real time.
+    private static let fallbackBacklogSeconds = 0.25
+    private static let fallbackBacklogFrames = Int(
+        outputSampleRate * fallbackBacklogSeconds
+    )
+
+    // Virtual devices must never be picked as the fallback microphone.
+    private static let virtualDeviceNameMarkers = [
+        "vRemoteDr", "vRemote", "MiRemoteV", "BlackHole", "Parrot",
+    ]
 
     private let captureSession = AVCaptureSession()
     private let captureQueue = DispatchQueue(
@@ -112,8 +124,8 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     }
 
     /// Kept under the V1 method name so the proven X6 session state machine
-    /// remains unchanged. In vRemote, `active` means that the dual-input mix
-    /// is open; it no longer selects one microphone over another.
+    /// remains unchanged. In vRemote, `active` opens the remote-priority
+    /// microphone link; the local microphone is used only as a fallback.
     func setRemoteActive(_ active: Bool) {
         stateLock.lock()
         let changed = mixActive != active
@@ -129,8 +141,8 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         guard changed else { return }
         print(
             active
-                ? "[AUDIO] 双麦克风混音开启 · X6 + MacBook · Mac 对齐延迟 120ms"
-                : "[AUDIO] 双麦克风混音关闭"
+                ? "[AUDIO] 麦克风优先链路开启 · 遥控器优先，断开自动回退本地麦"
+                : "[AUDIO] 麦克风优先链路关闭"
         )
         onRouteChanged?(active)
     }
@@ -213,6 +225,34 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         }
     }
 
+    /// Built-in microphone first, then any real (non-virtual) audio input.
+    /// Loopback devices are excluded so a fallback can never re-enter the
+    /// vRemoteDr / MiRemoteV / BlackHole loop.
+    private static func preferredLocalInputDevice() -> AVCaptureDevice? {
+        let builtIn = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.builtInMicrophone],
+            mediaType: .audio,
+            position: .unspecified
+        ).devices.first {
+            $0.uniqueID == "BuiltInMicrophoneDevice"
+        }
+        if let builtIn { return builtIn }
+
+        var types: [AVCaptureDevice.DeviceType] = [.builtInMicrophone]
+        if #available(macOS 14.0, *) {
+            types.append(.microphone)
+        }
+        return AVCaptureDevice.DiscoverySession(
+            deviceTypes: types,
+            mediaType: .audio,
+            position: .unspecified
+        ).devices.first { device in
+            !virtualDeviceNameMarkers.contains {
+                device.localizedName.localizedCaseInsensitiveContains($0)
+            }
+        }
+    }
+
     private func startBuiltInMicCapture() {
         if captureConfigured {
             captureQueue.async { [weak self] in
@@ -222,18 +262,8 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
             }
             return
         }
-        let discovery = AVCaptureDevice.DiscoverySession(
-            deviceTypes: [.builtInMicrophone],
-            mediaType: .audio,
-            position: .unspecified
-        )
-        let device = discovery.devices.first {
-            $0.uniqueID == "BuiltInMicrophoneDevice"
-        } ?? discovery.devices.first {
-            $0.localizedName.localizedCaseInsensitiveContains("MacBook")
-        }
-        guard let device else {
-            print("[AUDIO] ⚠️ 找不到 MacBook 内置麦克风")
+        guard let device = Self.preferredLocalInputDevice() else {
+            print("[AUDIO] ⚠️ 找不到可用的本地麦克风，遥控器断开后将没有回退音源")
             return
         }
 
@@ -503,8 +533,11 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
                 }
             }
 
+            // 遥控器麦优先时不需要等本地麦对齐；只有两路同时有流时才对
+            // 本地麦做 120 ms 延迟，避免回退瞬间出现时间跳变。
             let macAvailable = pendingMac.count - pendingMacIndex
-            let macReady = max(0, macAvailable - Self.macAlignmentDelayFrames)
+            let alignment = remoteTaken > 0 ? Self.macAlignmentDelayFrames : 0
+            let macReady = max(0, macAvailable - alignment)
             if macReady > 0 {
                 macTaken = min(frameCount, macReady)
                 mac.replaceSubrange(
@@ -512,6 +545,13 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
                     with: pendingMac[pendingMacIndex..<(pendingMacIndex + macTaken)]
                 )
                 pendingMacIndex += macTaken
+            }
+            if remoteTaken > 0 {
+                // 遥控器优先期间丢弃落后的本地缓冲，回退时才能接近实时。
+                let backlog = pendingMac.count - pendingMacIndex
+                if backlog > Self.fallbackBacklogFrames {
+                    pendingMacIndex = pendingMac.count - Self.fallbackBacklogFrames
+                }
             }
 
             compactRemoteBufferIfNeededLocked()
@@ -528,14 +568,12 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
             let hasMac = frame < macTaken
             let hasRemote = frame < remoteTaken
             let value: Float
-            if hasMac && hasRemote {
-                // Equal, source-agnostic mix. Averaging preserves headroom and
-                // prevents the +6 dB overload caused by raw summation.
-                value = (mac[frame] + remote[frame]) * 0.5
-            } else if hasMac {
-                value = mac[frame]
-            } else if hasRemote {
+            if hasRemote {
+                // 遥控器麦优先，避免两路叠加造成的梳状滤波与底噪。
                 value = remote[frame]
+            } else if hasMac {
+                // 遥控器无流时自动回退，保证虚拟设备不会输出静音。
+                value = mac[frame]
             } else {
                 value = 0
             }

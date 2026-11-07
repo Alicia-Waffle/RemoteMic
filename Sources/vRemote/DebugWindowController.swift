@@ -1425,8 +1425,8 @@ private struct InputChannelView: View {
                 Text(enabled
                     ? (solo
                         ? L10n.text("仅此路参与", "Solo input")
-                        : L10n.text("参与混合", "In mix"))
-                    : L10n.text("不参与混合", "Not in mix"))
+                        : L10n.text("参与输入", "In input"))
+                    : L10n.text("不参与输入", "Not in input"))
                 Spacer()
                 if purchaseLink {
                     Button(L10n.text("购买遥控器 ↗", "Buy remote ↗")) {
@@ -1502,7 +1502,7 @@ private struct OutputChannelView: View {
             .padding(.top, 6)
             HStack(spacing: 8) {
                 Circle().fill(ConsoleTheme.amber).frame(width: 10, height: 10)
-                Text(L10n.text("两路已合并", "Inputs mixed"))
+                Text(L10n.text("遥控器优先 · 断开回退", "Remote priority · fallback"))
                     .font(.system(
                         size: AppLanguage.selected.usesEnglish ? 11 : 14,
                         weight: .semibold
