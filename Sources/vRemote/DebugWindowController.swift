@@ -4,6 +4,7 @@ import AVFoundation
 import CoreBluetooth
 import CoreGraphics
 import SwiftUI
+import UniformTypeIdentifiers
 
 enum PermissionKind: String, Identifiable, CaseIterable {
     case doubaoInput
@@ -1082,6 +1083,7 @@ private struct DeviceSelectionRow: View {
 private struct MappingRow: View {
     @ObservedObject private var mappings = RemoteMappingStore.shared
     @State private var showRecorder = false
+    @State private var gesture: RemoteGesture = .single
     let remote: SupportedRemoteID
     let button: RemoteButtonDefinition
     let enabled: Bool
@@ -1106,36 +1108,59 @@ private struct MappingRow: View {
                     .foregroundStyle(ConsoleTheme.green)
             } else {
                 HStack(spacing: 4) {
+                    Picker(L10n.text("手势", "Gesture"), selection: $gesture) {
+                        ForEach(RemoteGesture.allCases) { option in
+                            Text(option.title).tag(option)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 56)
                     Picker(
                         button.title,
                         selection: Binding(
-                            get: { mappings.target(for: button, remote: remote) },
+                            get: {
+                                mappings.target(
+                                    for: button,
+                                    remote: remote,
+                                    gesture: gesture
+                                )
+                            },
                             set: { target in
                                 if target == .custom {
                                     showRecorder = true
                                 } else {
-                                    mappings.setTarget(target, for: button, remote: remote)
+                                    mappings.setTarget(
+                                        target,
+                                        for: button,
+                                        remote: remote,
+                                        gesture: gesture
+                                    )
                                 }
                             }
                         )
                     ) {
                         ForEach(RemoteMappingTarget.allCases.filter { $0 != .doubaoVoice }) { target in
-                            Text(
-                                target == .custom
-                                    ? mappings.targetTitle(for: button, remote: remote)
-                                    : target.title
-                            ).tag(target)
+                            Text(menuTitle(for: target)).tag(target)
                         }
                     }
                     .labelsHidden()
                     .frame(width: 142)
-                    if mappings.target(for: button, remote: remote) == .custom {
+                    if mappings.target(for: button, remote: remote, gesture: gesture) == .custom {
                         Button { showRecorder = true } label: {
                             Image(systemName: "record.circle")
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(ConsoleTheme.green)
                         .help(L10n.text("重新录制按键", "Record again"))
+                    }
+                    if mappings.target(for: button, remote: remote, gesture: gesture)
+                        == .openApplication {
+                        Button { chooseApplication() } label: {
+                            Image(systemName: "folder")
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(ConsoleTheme.green)
+                        .help(L10n.text("选择要打开的 App", "Choose an app to open"))
                     }
                 }
             }
@@ -1153,12 +1178,57 @@ private struct MappingRow: View {
                     mappings.setCustomShortcut(
                         shortcut,
                         for: button,
-                        remote: remote
+                        remote: remote,
+                        gesture: gesture
                     )
                     showRecorder = false
                 }
             )
         }
+    }
+
+    /// 自定义组合键与「打开 App」在菜单里显示已配置的名称，其余用固定标题。
+    private func menuTitle(for target: RemoteMappingTarget) -> String {
+        switch target {
+        case .custom:
+            return mappings.customShortcut(
+                for: button,
+                remote: remote,
+                gesture: gesture
+            )?.label ?? target.title
+        case .openApplication:
+            return mappings.appLaunch(
+                for: button,
+                remote: remote,
+                gesture: gesture
+            )?.label ?? target.title
+        default:
+            return target.title
+        }
+    }
+
+    private func chooseApplication() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.application]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK,
+              let url = panel.url,
+              let bundle = Bundle(url: url),
+              let bundleID = bundle.bundleIdentifier
+        else { return }
+        let info = bundle.localizedInfoDictionary ?? bundle.infoDictionary
+        let label = info?["CFBundleDisplayName"] as? String
+            ?? info?["CFBundleName"] as? String
+            ?? url.deletingPathExtension().lastPathComponent
+        mappings.setAppLaunch(
+            RemoteAppLaunch(bundleID: bundleID, label: label),
+            for: button,
+            remote: remote,
+            gesture: gesture
+        )
     }
 }
 

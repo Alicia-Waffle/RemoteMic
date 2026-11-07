@@ -63,6 +63,22 @@ final class ChromecastRemoteHIDBridge {
     private var remappingEnabled = RemoteMappingStore.shared.isEnabled(.chromecast)
     private var lastButtonID: String?
     private var helperClient: ChromecastHIDHelperClient?
+    private let gestureRecognizer = RemoteGestureRecognizer()
+
+    init() {
+        gestureRecognizer.isGestureEnabled = { buttonID in
+            guard let button = RemoteProfiles.chromecastButtons.first(
+                where: { $0.id == buttonID }
+            ) else { return false }
+            return RemoteMappingStore.shared.hasGestureMapping(
+                for: button,
+                remote: .chromecast
+            )
+        }
+        gestureRecognizer.onGesture = { [weak self] buttonID, gesture, isDown in
+            self?.postGesture(buttonID: buttonID, gesture: gesture, isDown: isDown)
+        }
+    }
 
     func start() {
         stop()
@@ -161,6 +177,8 @@ final class ChromecastRemoteHIDBridge {
         activeDevice = nil
         lastButtonID = nil
 
+        gestureRecognizer.cancelPending()
+
         helperClient?.invalidate()
         helperClient = nil
 
@@ -240,12 +258,30 @@ final class ChromecastRemoteHIDBridge {
             )
             return
         }
+        // 语音键走 ATVV，不参与手势判定。
+        guard !button.voiceControlled else { return }
+        gestureRecognizer.handle(buttonID: buttonID, isDown: isDown)
+    }
+
+    private func postGesture(
+        buttonID: String,
+        gesture: RemoteGesture,
+        isDown: Bool
+    ) {
+        guard let button = RemoteProfiles.chromecastButtons.first(
+            where: { $0.id == buttonID }
+        ) else { return }
         let store = RemoteMappingStore.shared
-        store.post(button: button, remote: .chromecast, isDown: isDown)
+        store.post(
+            button: button,
+            remote: .chromecast,
+            gesture: gesture,
+            isDown: isDown
+        )
         print(
-            "[CAST-MAP] \(button.title) " +
+            "[CAST-MAP] \(button.title) \(gesture.rawValue) " +
             "\(isDown ? "DOWN" : "UP") -> " +
-            store.targetTitle(for: button, remote: .chromecast)
+            store.targetTitle(for: button, remote: .chromecast, gesture: gesture)
         )
     }
 }

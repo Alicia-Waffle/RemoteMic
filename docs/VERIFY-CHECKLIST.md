@@ -1,4 +1,4 @@
-# 真机验证清单（v1.2.2）
+# 真机验证清单（v1.3.0）
 
 明天接上谷歌遥控器后，按这个顺序走一遍即可。所有命令都在仓库根目录执行。
 
@@ -62,9 +62,22 @@ sudo launchctl bootstrap system /Library/LaunchDaemons/local.simaqingfeng.vRemot
 |---|---|
 | `[CAST-HID] privileged helper active` | helper 生效，独占成功 |
 | `[CAST-HID] privileged helper unavailable; ... 0xE00002C1` | helper 没装或没起来，按键必然无效 |
-| `[CAST-MAP] 方向上 DOWN -> ...` | usage 命中内置表，映射已下发 |
+| `[CAST-MAP] 方向上 single DOWN -> ...` | 单击命中，映射已下发 |
+| `[CAST-MAP] 确认 double DOWN -> ...` | 双击命中 |
+| `[CAST-MAP] 返回 long UP -> ...` | 长按松手 |
 | `[CAST-MAP] 未知按键 usage=XX` | 遥控器上报了这个 usage，但表里没有 |
 | 什么都没打印 | 报告格式或 reportID 与解析不符，见第 6 节 |
+
+### 手势验证（1.3.0）
+
+映射行左侧多了「单击 / 双击 / 长按」选择器。给某个键（建议先拿不常用的「信源」试）配置：
+
+1. 手势选「双击」，目标选「打开 App…」，点文件夹图标选一个 App
+2. 手势选「长按」，目标选一个快捷键或另一个 App
+3. 快速点两下 → 应打开双击对应的 App；按住 0.6 秒再松手 → 应触发长按目标
+4. 单击方向键 → 应立刻响应、无 0.28 秒延迟；按住方向键 → 应持续重复
+
+注意：只有配置了双击或长按的按键才走手势判定，其余按键保持旧版即时语义。
 
 ## 5. 内置 usage 表（`RemoteMappingSupport.swift`）
 

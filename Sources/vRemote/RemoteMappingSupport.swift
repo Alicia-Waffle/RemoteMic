@@ -95,6 +95,22 @@ enum RemoteProfiles {
     ]
 }
 
+enum RemoteGesture: String, Codable, CaseIterable, Identifiable {
+    case single
+    case double
+    case long
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .single: L10n.text("单击", "Single")
+        case .double: L10n.text("双击", "Double")
+        case .long: L10n.text("长按", "Long")
+        }
+    }
+}
+
 enum RemoteMappingTarget: String, CaseIterable, Identifiable, Codable, Hashable {
     case disabled
     case doubaoVoice
@@ -121,6 +137,7 @@ enum RemoteMappingTarget: String, CaseIterable, Identifiable, Codable, Hashable 
     case commandV
     case commandZ
     case custom
+    case openApplication
 
     var id: String { rawValue }
 
@@ -151,6 +168,7 @@ enum RemoteMappingTarget: String, CaseIterable, Identifiable, Codable, Hashable 
         case .commandV: L10n.text("粘贴 (⌘V)", "Paste (⌘V)")
         case .commandZ: L10n.text("撤销 (⌘Z)", "Undo (⌘Z)")
         case .custom: L10n.text("录制任意按键…", "Record a key…")
+        case .openApplication: L10n.text("打开 App…", "Open App…")
         }
     }
 
@@ -244,6 +262,28 @@ struct RemoteCustomShortcut: Codable, Hashable {
     }
 }
 
+struct RemoteAppLaunch: Codable, Hashable {
+    let bundleID: String
+    let label: String
+
+    func open() {
+        guard let url = NSWorkspace.shared.urlForApplication(
+            withBundleIdentifier: bundleID
+        ) else {
+            print("[CAST-MAP] 找不到 App \(label) (\(bundleID))")
+            return
+        }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.openApplication(at: url, configuration: configuration) {
+            _, error in
+            if let error {
+                print("[CAST-MAP] 打开 \(label) 失败: \(error.localizedDescription)")
+            }
+        }
+    }
+}
+
 final class RemoteMappingStore: ObservableObject {
     static let shared = RemoteMappingStore()
 
@@ -252,6 +292,7 @@ final class RemoteMappingStore: ObservableObject {
     private let prefix = "remoteMapping."
     private let enabledPrefix = "remoteMappingEnabled."
     private let customPrefix = "remoteCustomMapping."
+    private let appPrefix = "remoteAppMapping."
 
     private init() {}
 
@@ -264,37 +305,86 @@ final class RemoteMappingStore: ObservableObject {
         revision += 1
     }
 
-    func target(
+    /// 单击沿用旧存储键，双击 / 长按追加手势后缀，老配置不会失效。
+    private func storageKey(
+        _ keyPrefix: String,
+        _ button: RemoteButtonDefinition,
+        _ remote: SupportedRemoteID,
+        _ gesture: RemoteGesture
+    ) -> String {
+        let base = keyPrefix + remote.rawValue + "." + button.id
+        return gesture == .single ? base : base + "." + gesture.rawValue
+    }
+
+    /// 只有用户显式配置过双击或长按，才需要启用手势识别；否则桥接层
+    /// 继续使用原来的即时按下 / 松开语义（保留系统按键重复与零延迟）。
+    func hasGestureMapping(
         for button: RemoteButtonDefinition,
         remote: SupportedRemoteID
+    ) -> Bool {
+        [RemoteGesture.double, .long].contains { gesture in
+            defaults.string(
+                forKey: storageKey(prefix, button, remote, gesture)
+            ) != nil
+                || defaults.data(
+                    forKey: storageKey(customPrefix, button, remote, gesture)
+                ) != nil
+                || defaults.data(
+                    forKey: storageKey(appPrefix, button, remote, gesture)
+                ) != nil
+        }
+    }
+
+    func target(
+        for button: RemoteButtonDefinition,
+        remote: SupportedRemoteID,
+        gesture: RemoteGesture = .single
     ) -> RemoteMappingTarget {
         guard !button.voiceControlled else { return .doubaoVoice }
         guard button.remappable else { return .disabled }
-        let key = prefix + remote.rawValue + "." + button.id
-        guard let raw = defaults.string(forKey: key),
-              let target = RemoteMappingTarget(rawValue: raw)
-        else { return button.defaultTarget }
-        return target
+        let key = storageKey(prefix, button, remote, gesture)
+        if let raw = defaults.string(forKey: key),
+           let target = RemoteMappingTarget(rawValue: raw) {
+            return target
+        }
+        // 双击 / 长按未配置时沿用单击映射，保持旧行为。
+        if gesture != .single {
+            return target(for: button, remote: remote, gesture: .single)
+        }
+        return button.defaultTarget
     }
 
     func setTarget(
         _ target: RemoteMappingTarget,
         for button: RemoteButtonDefinition,
-        remote: SupportedRemoteID
+        remote: SupportedRemoteID,
+        gesture: RemoteGesture = .single
     ) {
         guard !button.voiceControlled, button.remappable else { return }
         defaults.set(
             target.rawValue,
-            forKey: prefix + remote.rawValue + "." + button.id
+            forKey: storageKey(prefix, button, remote, gesture)
         )
         revision += 1
     }
 
     func customShortcut(
         for button: RemoteButtonDefinition,
-        remote: SupportedRemoteID
+        remote: SupportedRemoteID,
+        gesture: RemoteGesture = .single
     ) -> RemoteCustomShortcut? {
-        let key = customPrefix + remote.rawValue + "." + button.id
+        storedCustomShortcut(for: button, remote: remote, gesture: gesture)
+            ?? (gesture == .single
+                ? nil
+                : storedCustomShortcut(for: button, remote: remote, gesture: .single))
+    }
+
+    private func storedCustomShortcut(
+        for button: RemoteButtonDefinition,
+        remote: SupportedRemoteID,
+        gesture: RemoteGesture
+    ) -> RemoteCustomShortcut? {
+        let key = storageKey(customPrefix, button, remote, gesture)
         guard let data = defaults.data(forKey: key) else { return nil }
         return try? JSONDecoder().decode(RemoteCustomShortcut.self, from: data)
     }
@@ -302,48 +392,106 @@ final class RemoteMappingStore: ObservableObject {
     func setCustomShortcut(
         _ shortcut: RemoteCustomShortcut,
         for button: RemoteButtonDefinition,
-        remote: SupportedRemoteID
+        remote: SupportedRemoteID,
+        gesture: RemoteGesture = .single
     ) {
-        let key = customPrefix + remote.rawValue + "." + button.id
+        let key = storageKey(customPrefix, button, remote, gesture)
         if let data = try? JSONEncoder().encode(shortcut) {
             defaults.set(data, forKey: key)
-            setTarget(.custom, for: button, remote: remote)
+            setTarget(.custom, for: button, remote: remote, gesture: gesture)
+        }
+    }
+
+    func appLaunch(
+        for button: RemoteButtonDefinition,
+        remote: SupportedRemoteID,
+        gesture: RemoteGesture = .single
+    ) -> RemoteAppLaunch? {
+        storedAppLaunch(for: button, remote: remote, gesture: gesture)
+            ?? (gesture == .single
+                ? nil
+                : storedAppLaunch(for: button, remote: remote, gesture: .single))
+    }
+
+    private func storedAppLaunch(
+        for button: RemoteButtonDefinition,
+        remote: SupportedRemoteID,
+        gesture: RemoteGesture
+    ) -> RemoteAppLaunch? {
+        let key = storageKey(appPrefix, button, remote, gesture)
+        guard let data = defaults.data(forKey: key) else { return nil }
+        return try? JSONDecoder().decode(RemoteAppLaunch.self, from: data)
+    }
+
+    func setAppLaunch(
+        _ launch: RemoteAppLaunch,
+        for button: RemoteButtonDefinition,
+        remote: SupportedRemoteID,
+        gesture: RemoteGesture = .single
+    ) {
+        let key = storageKey(appPrefix, button, remote, gesture)
+        if let data = try? JSONEncoder().encode(launch) {
+            defaults.set(data, forKey: key)
+            setTarget(.openApplication, for: button, remote: remote, gesture: gesture)
         }
     }
 
     func targetTitle(
         for button: RemoteButtonDefinition,
-        remote: SupportedRemoteID
+        remote: SupportedRemoteID,
+        gesture: RemoteGesture = .single
     ) -> String {
-        let value = target(for: button, remote: remote)
-        if value == .custom,
-           let shortcut = customShortcut(for: button, remote: remote) {
-            return shortcut.label
+        let value = target(for: button, remote: remote, gesture: gesture)
+        switch value {
+        case .custom:
+            return customShortcut(for: button, remote: remote, gesture: gesture)?.label
+                ?? value.title
+        case .openApplication:
+            return appLaunch(for: button, remote: remote, gesture: gesture)?.label
+                ?? value.title
+        default:
+            return value.title
         }
-        return value.title
     }
 
     func post(
         button: RemoteButtonDefinition,
         remote: SupportedRemoteID,
+        gesture: RemoteGesture = .single,
         isDown: Bool
     ) {
-        let value = target(for: button, remote: remote)
-        if value == .custom {
-            customShortcut(for: button, remote: remote)?.post(isDown: isDown)
-        } else {
+        let value = target(for: button, remote: remote, gesture: gesture)
+        switch value {
+        case .custom:
+            customShortcut(for: button, remote: remote, gesture: gesture)?
+                .post(isDown: isDown)
+        case .openApplication:
+            guard isDown,
+                  let launch = appLaunch(
+                      for: button,
+                      remote: remote,
+                      gesture: gesture
+                  )
+            else { return }
+            launch.open()
+        default:
             value.post(isDown: isDown)
         }
     }
 
     func reset(_ remote: SupportedRemoteID) {
         for button in RemoteProfiles.buttons(for: remote) {
-            defaults.removeObject(
-                forKey: prefix + remote.rawValue + "." + button.id
-            )
-            defaults.removeObject(
-                forKey: customPrefix + remote.rawValue + "." + button.id
-            )
+            for gesture in RemoteGesture.allCases {
+                defaults.removeObject(
+                    forKey: storageKey(prefix, button, remote, gesture)
+                )
+                defaults.removeObject(
+                    forKey: storageKey(customPrefix, button, remote, gesture)
+                )
+                defaults.removeObject(
+                    forKey: storageKey(appPrefix, button, remote, gesture)
+                )
+            }
         }
         revision += 1
     }
