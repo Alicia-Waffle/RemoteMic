@@ -10,7 +10,13 @@ UNSIGNED_PKG="$SCRIPT_DIR/dist/vRemoter-$VERSION-unsigned.pkg"
 FINAL_PKG="$SCRIPT_DIR/dist/vRemoter-$VERSION.pkg"
 
 "$SCRIPT_DIR/package-app.sh"
-"$SCRIPT_DIR/Driver/build-driver.sh"
+DRIVER="$SCRIPT_DIR/Driver/build/vRemoteDriver.driver"
+if [[ -d "$DRIVER" ]]; then
+  # 驱动源码（已安装的 BlackHole）可能不在当前机器上；已有构建产物时直接复用。
+  print "Reusing driver: $DRIVER"
+else
+  "$SCRIPT_DIR/Driver/build-driver.sh"
+fi
 
 rm -rf "$PAYLOAD_ROOT" "$UNSIGNED_PKG" "$FINAL_PKG"
 mkdir -p "$PAYLOAD_ROOT/Applications"

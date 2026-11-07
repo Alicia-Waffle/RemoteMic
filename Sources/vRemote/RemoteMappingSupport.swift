@@ -316,25 +316,7 @@ final class RemoteMappingStore: ObservableObject {
         return gesture == .single ? base : base + "." + gesture.rawValue
     }
 
-    /// 只有用户显式配置过双击或长按，才需要启用手势识别；否则桥接层
-    /// 继续使用原来的即时按下 / 松开语义（保留系统按键重复与零延迟）。
-    func hasGestureMapping(
-        for button: RemoteButtonDefinition,
-        remote: SupportedRemoteID
-    ) -> Bool {
-        [RemoteGesture.double, .long].contains { gesture in
-            defaults.string(
-                forKey: storageKey(prefix, button, remote, gesture)
-            ) != nil
-                || defaults.data(
-                    forKey: storageKey(customPrefix, button, remote, gesture)
-                ) != nil
-                || defaults.data(
-                    forKey: storageKey(appPrefix, button, remote, gesture)
-                ) != nil
-        }
-    }
-
+    /// 双击 / 长按默认禁用：未配置时不再继承单击映射。
     func target(
         for button: RemoteButtonDefinition,
         remote: SupportedRemoteID,
@@ -347,9 +329,8 @@ final class RemoteMappingStore: ObservableObject {
            let target = RemoteMappingTarget(rawValue: raw) {
             return target
         }
-        // 双击 / 长按未配置时沿用单击映射，保持旧行为。
         if gesture != .single {
-            return target(for: button, remote: remote, gesture: .single)
+            return .disabled
         }
         return button.defaultTarget
     }
@@ -374,9 +355,6 @@ final class RemoteMappingStore: ObservableObject {
         gesture: RemoteGesture = .single
     ) -> RemoteCustomShortcut? {
         storedCustomShortcut(for: button, remote: remote, gesture: gesture)
-            ?? (gesture == .single
-                ? nil
-                : storedCustomShortcut(for: button, remote: remote, gesture: .single))
     }
 
     private func storedCustomShortcut(
@@ -408,9 +386,6 @@ final class RemoteMappingStore: ObservableObject {
         gesture: RemoteGesture = .single
     ) -> RemoteAppLaunch? {
         storedAppLaunch(for: button, remote: remote, gesture: gesture)
-            ?? (gesture == .single
-                ? nil
-                : storedAppLaunch(for: button, remote: remote, gesture: .single))
     }
 
     private func storedAppLaunch(

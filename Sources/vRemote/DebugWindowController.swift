@@ -130,21 +130,44 @@ enum PermissionKind: String, Identifiable, CaseIterable {
     }
 }
 
+/// 控制台配色。所有颜色都随系统外观（浅色 / 深色）自动切换，
+/// `black` 表示「凹陷 / 轨道」类背景，而不是字面意义上的黑色。
 private enum ConsoleTheme {
-    static let panel = Color(red: 0.055, green: 0.059, blue: 0.067)
-    static let surface = Color(red: 0.083, green: 0.091, blue: 0.103)
-    static let surface2 = Color(red: 0.102, green: 0.112, blue: 0.124)
-    static let line = Color(red: 0.22, green: 0.23, blue: 0.25)
-    static let lineSoft = Color(red: 0.15, green: 0.16, blue: 0.18)
-    static let text = Color(red: 0.93, green: 0.94, blue: 0.95)
-    static let secondary = Color(red: 0.55, green: 0.57, blue: 0.61)
-    static let tertiary = Color(red: 0.39, green: 0.41, blue: 0.45)
-    static let green = Color(red: 0.31, green: 0.82, blue: 0.53)
-    static let amber = Color(red: 0.96, green: 0.61, blue: 0.19)
-    static let amberDeep = Color(red: 0.16, green: 0.13, blue: 0.09)
-    static let red = Color(red: 0.94, green: 0.33, blue: 0.34)
-    static let redDeep = Color(red: 0.25, green: 0.08, blue: 0.09)
-    static let black = Color(red: 0.025, green: 0.028, blue: 0.032)
+    static let panel = adaptive(dark: (0.055, 0.059, 0.067), light: (0.945, 0.949, 0.957))
+    static let surface = adaptive(dark: (0.083, 0.091, 0.103), light: (1.0, 1.0, 1.0))
+    static let surface2 = adaptive(dark: (0.102, 0.112, 0.124), light: (0.951, 0.957, 0.969))
+    static let line = adaptive(dark: (0.22, 0.23, 0.25), light: (0.82, 0.83, 0.86))
+    static let lineSoft = adaptive(dark: (0.15, 0.16, 0.18), light: (0.89, 0.90, 0.92))
+    static let text = adaptive(dark: (0.93, 0.94, 0.95), light: (0.10, 0.11, 0.13))
+    static let secondary = adaptive(dark: (0.55, 0.57, 0.61), light: (0.38, 0.40, 0.44))
+    static let tertiary = adaptive(dark: (0.39, 0.41, 0.45), light: (0.53, 0.55, 0.60))
+    static let green = adaptive(dark: (0.31, 0.82, 0.53), light: (0.09, 0.62, 0.34))
+    static let greenDeep = adaptive(dark: (0.06, 0.25, 0.16), light: (0.90, 0.96, 0.93))
+    static let amber = adaptive(dark: (0.96, 0.61, 0.19), light: (0.82, 0.50, 0.05))
+    static let amberDeep = adaptive(dark: (0.16, 0.13, 0.09), light: (1.0, 0.965, 0.90))
+    static let red = adaptive(dark: (0.94, 0.33, 0.34), light: (0.82, 0.19, 0.22))
+    static let redDeep = adaptive(dark: (0.25, 0.08, 0.09), light: (0.996, 0.941, 0.945))
+    static let black = adaptive(dark: (0.025, 0.028, 0.032), light: (0.906, 0.914, 0.929))
+
+    private static func adaptive(
+        dark: (CGFloat, CGFloat, CGFloat),
+        light: (CGFloat, CGFloat, CGFloat)
+    ) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            let value = isDark ? dark : light
+            return NSColor(red: value.0, green: value.1, blue: value.2, alpha: 1)
+        })
+    }
+}
+
+/// 窗口底色跟随系统外观，避免浅色模式下出现深色边框。
+private enum WindowChrome {
+    static let background = NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor(red: 0.055, green: 0.059, blue: 0.067, alpha: 1)
+            : NSColor(red: 0.945, green: 0.949, blue: 0.957, alpha: 1)
+    }
 }
 
 enum LogoAsset {
@@ -233,8 +256,54 @@ private enum ConsolePage: String, CaseIterable, Identifiable {
     }
 }
 
+/// 电平值单独存放，避免每秒几十次的电平更新让整页（尤其是按键映射的
+/// 下拉菜单）反复求值；同时限制到约 30fps，减少无谓的布局刷新。
+@MainActor
+private final class ConsoleLevels: ObservableObject {
+    @Published private(set) var mac: Double = -120
+    @Published private(set) var remote: Double = -120
+
+    private var latestMac: Double = -120
+    private var latestRemote: Double = -120
+    private var lastFlush: TimeInterval = 0
+    private var flushScheduled = false
+    private let minInterval: TimeInterval = 1.0 / 30.0
+
+    func setMac(_ db: Double) {
+        latestMac = db
+        scheduleFlush()
+    }
+
+    func setRemote(_ db: Double) {
+        latestRemote = db
+        scheduleFlush()
+    }
+
+    private func scheduleFlush() {
+        let now = ProcessInfo.processInfo.systemUptime
+        let elapsed = now - lastFlush
+        if elapsed >= minInterval {
+            flush()
+        } else if !flushScheduled {
+            flushScheduled = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + (minInterval - elapsed)) { [weak self] in
+                self?.flush()
+            }
+        }
+    }
+
+    private func flush() {
+        lastFlush = ProcessInfo.processInfo.systemUptime
+        flushScheduled = false
+        if abs(latestMac - mac) > 0.5 { mac = latestMac }
+        if abs(latestRemote - remote) > 0.5 { remote = latestRemote }
+    }
+}
+
 @MainActor
 private final class ConsoleViewModel: ObservableObject {
+    /// Fork: 未配置自有收款码前不自动弹出打赏提示。
+    private let donationPromptEnabled = false
     @Published var selectedPage: ConsolePage = CommandLine.arguments.contains(
         "--mapping-window-demo"
     ) ? .mapping : .mixer
@@ -244,11 +313,11 @@ private final class ConsoleViewModel: ObservableObject {
     @Published var remoteStreaming = false
     @Published var macInputEnabled = true
     @Published var remoteInputEnabled = true
+    @Published var macCaptureActive = false
+    @Published var macCaptureAlwaysOn = AppStorage.macCaptureAlwaysOn
     @Published var doubaoIsRecording = false
     @Published var doubaoInput = "--"
     @Published var driverAvailable = false
-    @Published var macLevelDB = -120.0
-    @Published var remoteLevelDB = -120.0
     @Published var microphoneGranted = false
     @Published var accessibilityGranted = false
     @Published var inputMonitoringGranted = false
@@ -267,6 +336,7 @@ private final class ConsoleViewModel: ObservableObject {
     var onRestartApp: (() -> Void)?
     var onMacInputEnabledChanged: ((Bool) -> Void)?
     var onRemoteInputEnabledChanged: ((Bool) -> Void)?
+    var onMacCaptureAlwaysOnChanged: ((Bool) -> Void)?
     var onInputTriggerChanged: (() -> Void)?
     var onRemoteMappingEnabledChanged: ((SupportedRemoteID, Bool) -> Void)?
 
@@ -279,6 +349,12 @@ private final class ConsoleViewModel: ObservableObject {
         inputTriggerKey = trigger
         AppStorage.inputTriggerKey = trigger
         onInputTriggerChanged?()
+    }
+
+    func setMacCaptureAlwaysOn(_ enabled: Bool) {
+        guard macCaptureAlwaysOn != enabled else { return }
+        macCaptureAlwaysOn = enabled
+        onMacCaptureAlwaysOnChanged?(enabled)
     }
 
     func setRemoteMappingEnabled(_ enabled: Bool, remote: SupportedRemoteID) {
@@ -324,14 +400,19 @@ private final class ConsoleViewModel: ObservableObject {
             bluetoothGranted = false
             return
         }
-        microphoneGranted = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
-        accessibilityGranted = AXIsProcessTrusted()
-        inputMonitoringGranted = CGPreflightListenEventAccess()
+        let mic = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+        let ax = AXIsProcessTrusted()
+        let listen = CGPreflightListenEventAccess()
+        let bluetooth: Bool
         if #available(macOS 11.0, *) {
-            bluetoothGranted = CBManager.authorization == .allowedAlways
+            bluetooth = CBManager.authorization == .allowedAlways
         } else {
-            bluetoothGranted = true
+            bluetooth = true
         }
+        if microphoneGranted != mic { microphoneGranted = mic }
+        if accessibilityGranted != ax { accessibilityGranted = ax }
+        if inputMonitoringGranted != listen { inputMonitoringGranted = listen }
+        if bluetoothGranted != bluetooth { bluetoothGranted = bluetooth }
         evaluateDonationPrompt()
     }
 
@@ -396,14 +477,13 @@ private final class ConsoleViewModel: ObservableObject {
     }
 
     func observeRemoteLevel(_ db: Double) {
-        remoteLevelDB = db
         guard showX6MicHint, db > -100 else { return }
         UserDefaults.standard.set(true, forKey: "vRemoter.hasCompletedX6MicTest")
         showX6MicHint = false
     }
 
     private func evaluateDonationPrompt() {
-        guard !donationPromptShownInSession else { return }
+        guard donationPromptEnabled, !donationPromptShownInSession else { return }
         if CommandLine.arguments.contains("--donation-prompt-demo") {
             presentDonationPrompt()
             return
@@ -429,16 +509,18 @@ private final class ConsoleViewModel: ObservableObject {
 }
 
 final class DebugWindowController: NSWindowController, NSWindowDelegate {
-    private static let windowSize = NSSize(width: 775, height: 658)
+    private static let windowSize = NSSize(width: 1000, height: 690)
 
     var onStopMicrophone: (() -> Void)?
     var onRestartApp: (() -> Void)?
     var onMacInputEnabledChanged: ((Bool) -> Void)?
     var onRemoteInputEnabledChanged: ((Bool) -> Void)?
+    var onMacCaptureAlwaysOnChanged: ((Bool) -> Void)?
     var onInputTriggerChanged: (() -> Void)?
     var onRemoteMappingEnabledChanged: ((SupportedRemoteID, Bool) -> Void)?
 
     private let model = ConsoleViewModel()
+    private let levels = ConsoleLevels()
     private var permissionTimer: Timer?
 
     init() {
@@ -455,15 +537,13 @@ final class DebugWindowController: NSWindowController, NSWindowDelegate {
         window.isMovableByWindowBackground = true
         window.center()
         window.isReleasedWhenClosed = false
-        window.backgroundColor = NSColor(
-            red: 0.055,
-            green: 0.059,
-            blue: 0.067,
-            alpha: 1
-        )
-        window.appearance = NSAppearance(named: .darkAqua)
-        window.minSize = windowSize
-        window.maxSize = windowSize
+        window.backgroundColor = WindowChrome.background
+        // 普通窗口层级：跟随系统前后顺序，不再强制置顶或压后。
+        window.level = .normal
+        window.hidesOnDeactivate = false
+        window.isRestorable = false
+        window.minSize = NSSize(width: 880, height: 660)
+        window.maxSize = NSSize(width: 1600, height: 1200)
         super.init(window: window)
         window.delegate = self
 
@@ -475,6 +555,9 @@ final class DebugWindowController: NSWindowController, NSWindowDelegate {
         model.onRemoteInputEnabledChanged = { [weak self] enabled in
             self?.onRemoteInputEnabledChanged?(enabled)
         }
+        model.onMacCaptureAlwaysOnChanged = { [weak self] enabled in
+            self?.onMacCaptureAlwaysOnChanged?(enabled)
+        }
         model.onInputTriggerChanged = { [weak self] in
             self?.onInputTriggerChanged?()
         }
@@ -482,11 +565,12 @@ final class DebugWindowController: NSWindowController, NSWindowDelegate {
             self?.onRemoteMappingEnabledChanged?(remote, enabled)
         }
         window.contentView = NSHostingView(
-            rootView: StudioMixerView(model: model)
-                .preferredColorScheme(.dark)
+            rootView: StudioMixerView(model: model, levels: levels)
                 .frame(
-                    width: windowSize.width,
-                    height: windowSize.height
+                    minWidth: 880,
+                    maxWidth: .infinity,
+                    minHeight: 660,
+                    maxHeight: .infinity
                 )
         )
     }
@@ -510,6 +594,8 @@ final class DebugWindowController: NSWindowController, NSWindowDelegate {
         remoteStreaming: Bool,
         macInputEnabled: Bool,
         remoteInputEnabled: Bool,
+        macCaptureActive: Bool = true,
+        macCaptureAlwaysOn: Bool = false,
         doubaoIsRecording: Bool,
         doubaoInput: String,
         driverAvailable: Bool,
@@ -520,29 +606,43 @@ final class DebugWindowController: NSWindowController, NSWindowDelegate {
     ) {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            self.model.status = status
-            self.model.hidConnected = hidConnected
-            self.model.bleConnected = bleConnected
-            self.model.remoteStreaming = remoteStreaming
-            self.model.macInputEnabled = macInputEnabled
-            self.model.remoteInputEnabled = remoteInputEnabled
-            self.model.doubaoIsRecording = doubaoIsRecording
-            self.model.doubaoInput = doubaoInput
-            self.model.driverAvailable = driverAvailable
-            self.model.x6Connected = x6Connected
-            self.model.chromecastConnected = chromecastConnected
-            if let macLevelDB { self.model.macLevelDB = macLevelDB }
-            if let remoteLevelDB { self.model.remoteLevelDB = remoteLevelDB }
+            self.sync(\.status, status)
+            self.sync(\.hidConnected, hidConnected)
+            self.sync(\.bleConnected, bleConnected)
+            self.sync(\.remoteStreaming, remoteStreaming)
+            self.sync(\.macInputEnabled, macInputEnabled)
+            self.sync(\.remoteInputEnabled, remoteInputEnabled)
+            self.sync(\.macCaptureActive, macCaptureActive)
+            self.sync(\.macCaptureAlwaysOn, macCaptureAlwaysOn)
+            self.sync(\.doubaoIsRecording, doubaoIsRecording)
+            self.sync(\.doubaoInput, doubaoInput)
+            self.sync(\.driverAvailable, driverAvailable)
+            self.sync(\.x6Connected, x6Connected)
+            self.sync(\.chromecastConnected, chromecastConnected)
+            if let macLevelDB { self.levels.setMac(macLevelDB) }
+            if let remoteLevelDB { self.levels.setRemote(remoteLevelDB) }
             self.model.refreshPermissions()
         }
     }
 
+    /// 值没变就不写入，避免每秒的状态刷新把整页 SwiftUI 重新求值。
+    private func sync<T: Equatable>(
+        _ keyPath: ReferenceWritableKeyPath<ConsoleViewModel, T>,
+        _ value: T
+    ) {
+        guard model[keyPath: keyPath] != value else { return }
+        model[keyPath: keyPath] = value
+    }
+
     func updateMacLevel(_ db: Double) {
-        DispatchQueue.main.async { [weak self] in self?.model.macLevelDB = db }
+        DispatchQueue.main.async { [weak self] in self?.levels.setMac(db) }
     }
 
     func updateRemoteLevel(_ db: Double) {
-        DispatchQueue.main.async { [weak self] in self?.model.observeRemoteLevel(db) }
+        DispatchQueue.main.async { [weak self] in
+            self?.levels.setRemote(db)
+            self?.model.observeRemoteLevel(db)
+        }
     }
 
     func showDonation() {
@@ -573,32 +673,29 @@ final class DebugWindowController: NSWindowController, NSWindowDelegate {
 
 private struct StudioMixerView: View {
     @ObservedObject var model: ConsoleViewModel
+    let levels: ConsoleLevels
     @ObservedObject private var commerce = CommerceConfigModel.shared
 
     var body: some View {
         VStack(spacing: 0) {
             header
                 .frame(height: 68)
-            if model.selectedPage == .mixer {
-                Spacer().frame(height: 15)
-                mixer
-                    .frame(height: 288)
-                Spacer().frame(height: 17)
-                statusPanel
-                    .frame(height: 230)
-            } else {
-                Spacer().frame(height: 15)
-                KeyMappingView(model: model)
-                    .frame(height: 535)
+            // 两页同时保留在视图树里，切页只是显示切换，
+            // 避免每次点击都重建 45 个下拉菜单造成的卡顿。
+            ZStack {
+                mixerPage
+                    .opacity(model.selectedPage == .mixer ? 1 : 0)
+                    .allowsHitTesting(model.selectedPage == .mixer)
+                    .accessibilityHidden(model.selectedPage != .mixer)
+                mappingPage
+                    .opacity(model.selectedPage == .mapping ? 1 : 0)
+                    .allowsHitTesting(model.selectedPage == .mapping)
+                    .accessibilityHidden(model.selectedPage != .mapping)
             }
         }
         .padding(20)
-        .frame(width: 775, height: 658)
+        .frame(minWidth: 880, maxWidth: .infinity, minHeight: 660, maxHeight: .infinity)
         .background(ConsoleTheme.panel)
-        .overlay(alignment: .bottom) {
-            supportLink
-                .padding(.bottom, 8)
-        }
         .sheet(item: $model.activeModal) { modal in
             switch modal {
             case .permission(let kind):
@@ -624,42 +721,46 @@ private struct StudioMixerView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 10) {
-            Image(nsImage: LogoAsset.image)
-                .resizable()
-                .interpolation(.high)
-                .frame(width: 45, height: 45)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("vRemoter")
-                    .font(.system(size: 24, weight: .semibold))
-                    .foregroundStyle(ConsoleTheme.text)
-                Text(L10n.text("双麦语音输入", "Dual microphone input"))
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(ConsoleTheme.secondary)
+        HStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Image(nsImage: LogoAsset.image)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 40, height: 40)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("vRemoter")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(ConsoleTheme.text)
+                    Text(L10n.text("双麦语音输入", "Dual microphone input"))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(ConsoleTheme.secondary)
+                }
             }
+            .fixedSize()
+
+            Spacer(minLength: 20)
+
             ConsolePageSelector(selection: $model.selectedPage)
-                .frame(width: 202)
-            Spacer()
-            HStack(spacing: 7) {
-                Circle()
-                    .fill(statusColor)
-                    .frame(width: 9, height: 9)
-                Text(model.remoteStreaming
-                    ? L10n.text("录音中", "Recording")
-                    : statusText)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(statusColor)
+                .frame(width: 208, height: 34)
+
+            Spacer(minLength: 20)
+
+            HStack(spacing: 12) {
+                supportLink
+                statusBadge
+                if model.remoteStreaming {
+                    Button(L10n.text("结束录音", "Stop")) { model.onStopMicrophone?() }
+                        .buttonStyle(ConsoleButtonStyle(
+                            tone: ConsoleButtonTone.error,
+                            compact: true,
+                            consoleSized: true
+                        ))
+                }
             }
-            if model.remoteStreaming {
-                Button(L10n.text("结束录音", "Stop")) { model.onStopMicrophone?() }
-                    .buttonStyle(ConsoleButtonStyle(
-                        tone: ConsoleButtonTone.error,
-                        compact: true,
-                        consoleSized: true
-                    ))
-            }
+            .fixedSize()
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 18)
+        .frame(height: 68)
         .background(panelBackground(ConsoleTheme.surface, radius: 19))
     }
 
@@ -667,16 +768,60 @@ private struct StudioMixerView: View {
         Button {
             model.showDonation()
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 Image(systemName: "cup.and.saucer.fill")
-                Text(L10n.text("打赏", "Buy me a coffee"))
+                Text(L10n.text("打赏", "Support"))
             }
-            .font(.system(size: 10.5, weight: .medium))
-            .foregroundStyle(ConsoleTheme.tertiary)
-            .fixedSize(horizontal: true, vertical: false)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(ConsoleTheme.secondary)
+            .padding(.horizontal, 11)
+            .frame(height: 30)
+            .background(ConsoleTheme.surface2)
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(ConsoleTheme.lineSoft, lineWidth: 1))
         }
         .buttonStyle(.plain)
         .help(L10n.text("支持 vRemoter", "Support vRemoter"))
+    }
+
+    private var statusBadge: some View {
+        HStack(spacing: 7) {
+            Circle()
+                .fill(statusColor)
+                .frame(width: 8, height: 8)
+            Text(model.remoteStreaming
+                ? L10n.text("录音中", "Recording")
+                : statusText)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(statusColor)
+                .fixedSize()
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 30)
+        .background(ConsoleTheme.surface2)
+        .clipShape(Capsule())
+        .overlay(Capsule().stroke(ConsoleTheme.lineSoft, lineWidth: 1))
+    }
+
+    private var mixerPage: some View {
+        VStack(spacing: 0) {
+            Spacer().frame(height: 16)
+            mixer
+                .frame(height: 288)
+            Spacer().frame(height: 16)
+            statusPanel
+                .frame(maxHeight: .infinity)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var mappingPage: some View {
+        VStack(spacing: 0) {
+            Spacer().frame(height: 16)
+            KeyMappingView(model: model)
+                .frame(maxHeight: .infinity)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var statusText: String {
@@ -704,18 +849,23 @@ private struct StudioMixerView: View {
             InputChannelView(
                 title: L10n.text("MacBook 麦克风", "MacBook Mic"),
                 subtitle: L10n.text("电脑内置", "Built in"),
-                db: model.macLevelDB,
+                levels: levels,
+                source: .mac,
                 enabled: model.macInputEnabled,
                 solo: model.macSolo,
+                captureActive: model.macCaptureActive,
+                captureAlwaysOn: model.macCaptureAlwaysOn,
+                onToggleCaptureAlwaysOn: model.setMacCaptureAlwaysOn,
                 onMute: model.toggleMacMute,
                 onSolo: model.toggleMacSolo
             )
-            .frame(width: 225)
+            .frame(maxWidth: .infinity)
             Divider().overlay(ConsoleTheme.lineSoft)
             InputChannelView(
                 title: L10n.text("遥控器麦克风", "Remote Mic"),
                 subtitle: L10n.text("蓝牙语音遥控器", "Bluetooth Voice Remote"),
-                db: model.remoteLevelDB,
+                levels: levels,
+                source: .remote,
                 enabled: model.remoteInputEnabled,
                 solo: model.remoteSolo,
                 purchaseLink: !commerce.config.availableStores.isEmpty,
@@ -724,13 +874,13 @@ private struct StudioMixerView: View {
                 onMute: model.toggleRemoteMute,
                 onSolo: model.toggleRemoteSolo
             )
-            .frame(width: 224)
+            .frame(maxWidth: .infinity)
             Divider().overlay(ConsoleTheme.lineSoft)
-            OutputChannelView(model: model)
-                .frame(width: 284)
+            OutputChannelView(model: model, levels: levels)
+                .frame(maxWidth: .infinity)
         }
         .background(panelBackground(ConsoleTheme.surface2, radius: 19))
-        .clipped()
+        .clipShape(RoundedRectangle(cornerRadius: 19))
     }
 
     private var statusPanel: some View {
@@ -794,7 +944,8 @@ private struct StudioMixerView: View {
                 onAction: { model.activeModal = .permission(.inputMonitoring) }
             )
         }
-        .padding(.horizontal, 15)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
         .background(panelBackground(ConsoleTheme.surface, radius: 19))
     }
 
@@ -830,10 +981,11 @@ private struct ConsolePageSelector: View {
                             ? ConsoleTheme.text
                             : ConsoleTheme.secondary
                     )
-                    .frame(maxWidth: .infinity, minHeight: 30)
+                    .frame(maxWidth: .infinity, minHeight: 28)
+                    .contentShape(Rectangle())
                     .background(
                         selection == page
-                            ? ConsoleTheme.surface2
+                            ? ConsoleTheme.surface
                             : Color.clear
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -842,6 +994,7 @@ private struct ConsolePageSelector: View {
                 .accessibilityLabel(page.title)
             }
         }
+        .frame(maxWidth: .infinity)
         .padding(3)
         .background(ConsoleTheme.black.opacity(0.72))
         .clipShape(RoundedRectangle(cornerRadius: 11))
@@ -854,10 +1007,9 @@ private struct KeyMappingView: View {
     @State private var selectedDevice: SupportedRemoteID = .chromecast
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 16) {
             triggerPanel
-                .frame(height: 116)
-            HStack(spacing: 14) {
+            HStack(spacing: 16) {
                 devicePanel
                     .frame(width: 238)
                 mappingPanel
@@ -913,7 +1065,8 @@ private struct KeyMappingView: View {
                 }
             }
         }
-        .padding(.horizontal, 19)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 16)
         .background(panelBackground(ConsoleTheme.surface, radius: 17))
     }
 
@@ -949,7 +1102,7 @@ private struct KeyMappingView: View {
             .foregroundStyle(ConsoleTheme.green)
             .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(15)
+        .padding(16)
         .background(panelBackground(ConsoleTheme.surface, radius: 17))
     }
 
@@ -957,7 +1110,6 @@ private struct KeyMappingView: View {
         HStack(spacing: 14) {
             VStack(spacing: 10) {
                 RemoteProductImage(kind: selectedDevice)
-                    .frame(width: 128)
                 Text(selectedDevice == .chromecast
                     ? L10n.text("14 个可映射键", "14 mappable buttons")
                     : L10n.text("15 个正面可映射键", "15 mappable front buttons"))
@@ -975,8 +1127,8 @@ private struct KeyMappingView: View {
                 }
                 Spacer()
             }
-            .padding(.top, 14)
-            .frame(width: 130)
+            .padding(.top, 16)
+            .frame(width: 128)
             Divider().overlay(ConsoleTheme.lineSoft)
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
@@ -1000,6 +1152,18 @@ private struct KeyMappingView: View {
                     .controlSize(.small)
                 }
                 Divider().overlay(ConsoleTheme.lineSoft)
+                HStack(spacing: 6) {
+                    Text(L10n.text("按键", "Button"))
+                        .padding(.leading, 22)
+                        .frame(width: 95, alignment: .leading)
+                    ForEach(RemoteGesture.allCases) { gesture in
+                        Text(gesture.title)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(ConsoleTheme.tertiary)
+                .padding(.horizontal, 9)
                 ScrollView {
                     LazyVStack(spacing: 6) {
                         ForEach(RemoteProfiles.buttons(for: selectedDevice)) { button in
@@ -1011,6 +1175,12 @@ private struct KeyMappingView: View {
                         }
                     }
                 }
+                Text(L10n.text(
+                    "单击 / 双击 / 长按可分别绑定不同动作；动作里可选「打开 App…」",
+                    "Single, double and long press can map to different actions; choose “Open App…” for apps."
+                ))
+                .font(.system(size: 10.5))
+                .foregroundStyle(ConsoleTheme.secondary)
                 HStack {
                     if !mappings.isEnabled(selectedDevice) {
                         Label(
@@ -1031,7 +1201,7 @@ private struct KeyMappingView: View {
             }
             .frame(maxWidth: .infinity)
         }
-        .padding(15)
+        .padding(16)
         .background(panelBackground(ConsoleTheme.surface, radius: 17))
     }
 }
@@ -1083,85 +1253,42 @@ private struct DeviceSelectionRow: View {
 private struct MappingRow: View {
     @ObservedObject private var mappings = RemoteMappingStore.shared
     @State private var showRecorder = false
-    @State private var gesture: RemoteGesture = .single
+    @State private var recordingGesture: RemoteGesture = .single
     let remote: SupportedRemoteID
     let button: RemoteButtonDefinition
     let enabled: Bool
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             Image(systemName: button.symbol)
-                .frame(width: 18)
+                .font(.system(size: 11))
+                .frame(width: 16)
                 .foregroundStyle(button.voiceControlled ? ConsoleTheme.green : ConsoleTheme.secondary)
             Text(button.title)
                 .font(.system(size: 11.5, weight: .medium))
                 .foregroundStyle(ConsoleTheme.text)
-                .frame(width: 76, alignment: .leading)
-            Spacer(minLength: 4)
+                .frame(width: 95, alignment: .leading)
+                .lineLimit(1)
             if !button.remappable {
                 Text(L10n.text("设备内部功能", "Device-only function"))
                     .font(.system(size: 11))
                     .foregroundStyle(ConsoleTheme.tertiary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             } else if button.voiceControlled {
                 Text(RemoteMappingTarget.doubaoVoice.title)
                     .font(.system(size: 11))
                     .foregroundStyle(ConsoleTheme.green)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                HStack(spacing: 4) {
-                    Picker(L10n.text("手势", "Gesture"), selection: $gesture) {
-                        ForEach(RemoteGesture.allCases) { option in
-                            Text(option.title).tag(option)
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(width: 56)
-                    Picker(
-                        button.title,
-                        selection: Binding(
-                            get: {
-                                mappings.target(
-                                    for: button,
-                                    remote: remote,
-                                    gesture: gesture
-                                )
-                            },
-                            set: { target in
-                                if target == .custom {
-                                    showRecorder = true
-                                } else {
-                                    mappings.setTarget(
-                                        target,
-                                        for: button,
-                                        remote: remote,
-                                        gesture: gesture
-                                    )
-                                }
-                            }
-                        )
-                    ) {
+                ForEach(RemoteGesture.allCases) { gesture in
+                    Picker(button.title, selection: targetBinding(for: gesture)) {
                         ForEach(RemoteMappingTarget.allCases.filter { $0 != .doubaoVoice }) { target in
-                            Text(menuTitle(for: target)).tag(target)
+                            Text(menuTitle(for: target, gesture: gesture)).tag(target)
                         }
                     }
                     .labelsHidden()
-                    .frame(width: 142)
-                    if mappings.target(for: button, remote: remote, gesture: gesture) == .custom {
-                        Button { showRecorder = true } label: {
-                            Image(systemName: "record.circle")
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(ConsoleTheme.green)
-                        .help(L10n.text("重新录制按键", "Record again"))
-                    }
-                    if mappings.target(for: button, remote: remote, gesture: gesture)
-                        == .openApplication {
-                        Button { chooseApplication() } label: {
-                            Image(systemName: "folder")
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(ConsoleTheme.green)
-                        .help(L10n.text("选择要打开的 App", "Choose an app to open"))
-                    }
+                    .controlSize(.small)
+                    .frame(minWidth: 92, maxWidth: .infinity)
                 }
             }
         }
@@ -1179,7 +1306,7 @@ private struct MappingRow: View {
                         shortcut,
                         for: button,
                         remote: remote,
-                        gesture: gesture
+                        gesture: recordingGesture
                     )
                     showRecorder = false
                 }
@@ -1187,8 +1314,36 @@ private struct MappingRow: View {
         }
     }
 
+    private func targetBinding(for gesture: RemoteGesture) -> Binding<RemoteMappingTarget> {
+        Binding(
+            get: { mappings.target(for: button, remote: remote, gesture: gesture) },
+            set: { target in
+                switch target {
+                case .custom:
+                    recordingGesture = gesture
+                    showRecorder = true
+                case .openApplication:
+                    mappings.setTarget(
+                        .openApplication,
+                        for: button,
+                        remote: remote,
+                        gesture: gesture
+                    )
+                    chooseApplication(gesture: gesture)
+                default:
+                    mappings.setTarget(
+                        target,
+                        for: button,
+                        remote: remote,
+                        gesture: gesture
+                    )
+                }
+            }
+        )
+    }
+
     /// 自定义组合键与「打开 App」在菜单里显示已配置的名称，其余用固定标题。
-    private func menuTitle(for target: RemoteMappingTarget) -> String {
+    private func menuTitle(for target: RemoteMappingTarget, gesture: RemoteGesture) -> String {
         switch target {
         case .custom:
             return mappings.customShortcut(
@@ -1207,7 +1362,7 @@ private struct MappingRow: View {
         }
     }
 
-    private func chooseApplication() {
+    private func chooseApplication(gesture: RemoteGesture) {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.application]
         panel.directoryURL = URL(fileURLWithPath: "/Applications")
@@ -1405,12 +1560,21 @@ private struct RemoteProductImage: View {
     }
 }
 
+private enum LevelSource {
+    case mac
+    case remote
+}
+
 private struct InputChannelView: View {
     let title: String
     let subtitle: String
-    let db: Double
+    @ObservedObject var levels: ConsoleLevels
+    let source: LevelSource
     let enabled: Bool
     let solo: Bool
+    var captureActive = true
+    var captureAlwaysOn = false
+    var onToggleCaptureAlwaysOn: ((Bool) -> Void)?
     var purchaseLink = false
     var showTestHint = false
     var onPurchase: (() -> Void)?
@@ -1429,22 +1593,32 @@ private struct InputChannelView: View {
                 .padding(.top, 4)
             HStack(spacing: 6) {
                 Circle()
-                    .fill(enabled ? (solo ? ConsoleTheme.amber : ConsoleTheme.green) : ConsoleTheme.tertiary)
+                    .fill(enabled
+                        ? (solo
+                            ? ConsoleTheme.amber
+                            : (captureActive ? ConsoleTheme.green : ConsoleTheme.tertiary))
+                        : ConsoleTheme.tertiary)
                     .frame(width: 10, height: 10)
                 Text(enabled
                     ? (solo
                         ? L10n.text("正在独奏", "Solo")
-                        : L10n.text("有声音", "Active"))
+                        : (captureActive
+                            ? L10n.text("有声音", "Active")
+                            : L10n.text("按需待机", "On demand")))
                     : L10n.text("不参与混合", "Muted"))
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(enabled ? (solo ? ConsoleTheme.amber : ConsoleTheme.secondary) : ConsoleTheme.tertiary)
+                    .foregroundStyle(enabled
+                        ? (solo
+                            ? ConsoleTheme.amber
+                            : (captureActive ? ConsoleTheme.secondary : ConsoleTheme.tertiary))
+                        : ConsoleTheme.tertiary)
                 Spacer()
                 Text(dbText)
                     .font(.system(size: 12, weight: .medium, design: .monospaced))
                     .foregroundStyle(ConsoleTheme.secondary)
             }
             .padding(.top, 15)
-            MeterView(db: enabled ? db : -120, color: ConsoleTheme.green, count: 10)
+            MeterView(db: displaysMeter ? db : -120, color: ConsoleTheme.green, count: 10)
                 .padding(.top, showTestHint ? 35 : 15)
                 .overlay(alignment: .topLeading) {
                     if showTestHint {
@@ -1476,7 +1650,7 @@ private struct InputChannelView: View {
             }
             .font(.system(size: 11))
             .foregroundStyle(ConsoleTheme.tertiary)
-            .frame(width: 141)
+            .frame(width: 176)
             .padding(.top, 6)
             HStack(spacing: 8) {
                 Button(L10n.text("静音", "Mute"), action: onMute)
@@ -1498,6 +1672,26 @@ private struct InputChannelView: View {
                         : L10n.text("参与输入", "In input"))
                     : L10n.text("不参与输入", "Not in input"))
                 Spacer()
+                if let onToggleCaptureAlwaysOn {
+                    Toggle(isOn: Binding(
+                        get: { captureAlwaysOn },
+                        set: { onToggleCaptureAlwaysOn($0) }
+                    )) {
+                        Text(L10n.text("始终开启", "Always on"))
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(captureAlwaysOn
+                                ? ConsoleTheme.green
+                                : ConsoleTheme.secondary)
+                            .fixedSize()
+                    }
+                    .toggleStyle(.checkbox)
+                    .controlSize(.mini)
+                    .tint(ConsoleTheme.green)
+                    .help(L10n.text(
+                        "关闭时只在语音触发期间打开麦克风",
+                        "Only capture while voice is active"
+                    ))
+                }
                 if purchaseLink {
                     Button(L10n.text("购买遥控器 ↗", "Buy remote ↗")) {
                         onPurchase?()
@@ -1521,14 +1715,53 @@ private struct InputChannelView: View {
         .opacity(enabled ? 1 : 0.58)
     }
 
+    private var db: Double {
+        source == .mac ? levels.mac : levels.remote
+    }
+
+    private var displaysMeter: Bool {
+        enabled && (source == .remote || captureActive)
+    }
+
     private var dbText: String {
-        guard enabled, db > -100 else { return "−∞" }
+        guard displaysMeter, db > -100 else { return "−∞" }
         return String(format: "%.0f dB", db)
+    }
+}
+
+/// 只圆右侧两个角，左侧与中间声道平接。
+private struct RightRoundedRectangle: Shape {
+    var radius: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let r = min(radius, rect.height / 2, rect.width / 2)
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - r, y: rect.minY))
+        path.addArc(
+            center: CGPoint(x: rect.maxX - r, y: rect.minY + r),
+            radius: r,
+            startAngle: .degrees(-90),
+            endAngle: .degrees(0),
+            clockwise: false
+        )
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - r))
+        path.addArc(
+            center: CGPoint(x: rect.maxX - r, y: rect.maxY - r),
+            radius: r,
+            startAngle: .degrees(0),
+            endAngle: .degrees(90),
+            clockwise: false
+        )
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.closeSubpath()
+        return path
     }
 }
 
 private struct OutputChannelView: View {
     @ObservedObject var model: ConsoleViewModel
+    @ObservedObject var levels: ConsoleLevels
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -1556,7 +1789,7 @@ private struct OutputChannelView: View {
             }
             .padding(.top, 15)
             MeterView(
-                db: outputError ? -120 : max(model.macLevelDB, model.remoteLevelDB),
+                db: outputError ? -120 : max(levels.mac, levels.remote),
                 color: ConsoleTheme.amber,
                 count: 14
             )
@@ -1568,7 +1801,7 @@ private struct OutputChannelView: View {
             }
             .font(.system(size: 11))
             .foregroundStyle(ConsoleTheme.tertiary)
-            .frame(width: 188)
+            .frame(width: 234)
             .padding(.top, 6)
             HStack(spacing: 8) {
                 Circle().fill(ConsoleTheme.amber).frame(width: 10, height: 10)
@@ -1605,6 +1838,7 @@ private struct OutputChannelView: View {
         .overlay(alignment: .top) {
             Rectangle().fill(ConsoleTheme.amber).frame(height: 3)
         }
+        .clipShape(RightRoundedRectangle(radius: 19))
     }
 
     private var outputError: Bool {
@@ -1837,9 +2071,9 @@ private enum DonationProvider: String, CaseIterable, Identifiable {
 
     var imageName: String {
         switch self {
-        case .wechat: "IMG_5989.JPG"
-        case .alipay: "IMG_5987.JPG"
-        case .paypal: "IMG_5990.JPG"
+        case .wechat: "wechat-qr.png"
+        case .alipay: "alipay-qr.png"
+        case .paypal: "paypal-qr.png"
         }
     }
 
@@ -2036,8 +2270,8 @@ private struct StatusRow: View {
                     ))
             }
         }
-        .padding(.horizontal, 13)
-        .frame(height: 35)
+        .padding(.horizontal, 9)
+        .frame(minHeight: 35, maxHeight: .infinity)
         .background(tone == .good ? Color.clear : color.opacity(0.07))
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
@@ -2306,7 +2540,7 @@ private struct ConsoleButtonStyle: ButtonStyle {
     private var background: Color {
         switch tone {
         case .neutral: ConsoleTheme.black
-        case .good: Color(red: 0.06, green: 0.25, blue: 0.16)
+        case .good: ConsoleTheme.greenDeep
         case .warning: ConsoleTheme.amberDeep
         case .error: ConsoleTheme.redDeep
         }

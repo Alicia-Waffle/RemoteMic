@@ -8,9 +8,13 @@ final class RemoteGestureRecognizer {
     /// (按键 id, 手势, 是否按下)
     var onGesture: ((String, RemoteGesture, Bool) -> Void)?
 
-    /// 只有配置了双击 / 长按的按键才走手势判定；其余按键保持即时
-    /// 按下 / 松开，避免 280 ms 的单击延迟与按住不重复的问题。
+    /// 可映射按键都走手势判定；双击 / 长按未配置时默认禁用，
+    /// 因此不能把长按直接当成单击执行。
     var isGestureEnabled: ((String) -> Bool)?
+
+    /// 只有配置了双击动作的按键才需要等待双击窗口；否则松手立即发单击，
+    /// 避免连按两下时第一下被吃掉、以及每次单击多等 280 ms。
+    var isDoubleEnabled: ((String) -> Bool)?
 
     private static let longPressDelay: TimeInterval = 0.60
     private static let doubleTapInterval: TimeInterval = 0.28
@@ -102,7 +106,9 @@ final class RemoteGestureRecognizer {
         }
 
         let now = Date()
-        if let last = lastRelease, last.buttonID == buttonID,
+        let doubleEnabled = isDoubleEnabled?(buttonID) ?? true
+        if doubleEnabled,
+           let last = lastRelease, last.buttonID == buttonID,
            now.timeIntervalSince(last.at) < Self.doubleTapInterval {
             lastRelease = nil
             cancelPendingSingle(buttonID: buttonID)
@@ -110,8 +116,13 @@ final class RemoteGestureRecognizer {
             return
         }
 
-        lastRelease = (buttonID, now)
-        scheduleSingle(buttonID: buttonID)
+        if doubleEnabled {
+            lastRelease = (buttonID, now)
+            scheduleSingle(buttonID: buttonID)
+        } else {
+            lastRelease = nil
+            emit(.single, buttonID: buttonID)
+        }
     }
 
     private func scheduleSingle(buttonID: String) {

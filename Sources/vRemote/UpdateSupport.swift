@@ -25,7 +25,6 @@ private struct GitHubRelease: Decodable, Identifiable {
     let htmlURL: URL
     let draft: Bool
     let prerelease: Bool
-    let driverUpdateRequired: Bool?
     let assets: [GitHubReleaseAsset]
 
     enum CodingKeys: String, CodingKey {
@@ -36,7 +35,6 @@ private struct GitHubRelease: Decodable, Identifiable {
         case htmlURL = "html_url"
         case draft
         case prerelease
-        case driverUpdateRequired = "driver_update_required"
         case assets
     }
 
@@ -44,10 +42,11 @@ private struct GitHubRelease: Decodable, Identifiable {
         tagName.hasPrefix("v") ? String(tagName.dropFirst()) : tagName
     }
 
+    /// 优先分发 PKG：安装包会同时覆盖应用与音频驱动，用户双击即可完成升级；
+    /// 只有 Release 未附带 PKG 时才退回 DMG（需要用户手动拖入应用程序目录）。
     var installerAsset: GitHubReleaseAsset? {
-        let package = assets.first { $0.name.lowercased().hasSuffix(".pkg") }
-        let diskImage = assets.first { $0.name.lowercased().hasSuffix(".dmg") }
-        return driverUpdateRequired == true ? (package ?? diskImage) : (diskImage ?? package)
+        assets.first { $0.name.lowercased().hasSuffix(".pkg") }
+            ?? assets.first { $0.name.lowercased().hasSuffix(".dmg") }
     }
 }
 
@@ -338,7 +337,7 @@ final class UpdateWindowController: NSWindowController, NSWindowDelegate {
         let info = Bundle.main.infoDictionary ?? [:]
         let releasesURL = (info["VRReleasesURL"] as? String)
             .flatMap(URL.init(string:))
-            ?? URL(string: "https://updates.vincentstudio.org/vremoter/releases.json")!
+            ?? URL(string: "https://api.github.com/repos/TheShadow178/vRemoter/releases?per_page=10")!
         let version = info["CFBundleShortVersionString"] as? String ?? "development"
         model = UpdateWindowModel(releasesURL: releasesURL, currentVersion: version)
 
@@ -354,19 +353,16 @@ final class UpdateWindowController: NSWindowController, NSWindowDelegate {
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = true
         window.isReleasedWhenClosed = false
-        window.backgroundColor = NSColor(
-            red: 0.055,
-            green: 0.059,
-            blue: 0.067,
-            alpha: 1
-        )
-        window.appearance = NSAppearance(named: .darkAqua)
+        window.backgroundColor = NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+                ? NSColor(red: 0.055, green: 0.059, blue: 0.067, alpha: 1)
+                : NSColor(red: 0.945, green: 0.949, blue: 0.957, alpha: 1)
+        }
         window.minSize = size
         window.maxSize = size
         window.center()
         window.contentView = NSHostingView(
             rootView: VersionUpdateView(model: model)
-                .preferredColorScheme(.dark)
         )
         super.init(window: window)
         window.delegate = self
@@ -411,12 +407,23 @@ final class UpdateWindowController: NSWindowController, NSWindowDelegate {
 }
 
 private enum UpdateTheme {
-    static let panel = Color(red: 0.055, green: 0.059, blue: 0.067)
-    static let surface = Color(red: 0.085, green: 0.092, blue: 0.105)
-    static let line = Color(red: 0.20, green: 0.22, blue: 0.25)
-    static let text = Color(red: 0.94, green: 0.95, blue: 0.96)
-    static let secondary = Color(red: 0.57, green: 0.60, blue: 0.66)
-    static let green = Color(red: 0.30, green: 0.82, blue: 0.53)
+    static let panel = adaptive(dark: (0.055, 0.059, 0.067), light: (0.945, 0.949, 0.957))
+    static let surface = adaptive(dark: (0.085, 0.092, 0.105), light: (1.0, 1.0, 1.0))
+    static let line = adaptive(dark: (0.20, 0.22, 0.25), light: (0.82, 0.83, 0.86))
+    static let text = adaptive(dark: (0.94, 0.95, 0.96), light: (0.10, 0.11, 0.13))
+    static let secondary = adaptive(dark: (0.57, 0.60, 0.66), light: (0.38, 0.40, 0.44))
+    static let green = adaptive(dark: (0.30, 0.82, 0.53), light: (0.09, 0.62, 0.34))
+
+    private static func adaptive(
+        dark: (CGFloat, CGFloat, CGFloat),
+        light: (CGFloat, CGFloat, CGFloat)
+    ) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            let value = isDark ? dark : light
+            return NSColor(red: value.0, green: value.1, blue: value.2, alpha: 1)
+        })
+    }
 }
 
 private struct VersionUpdateView: View {

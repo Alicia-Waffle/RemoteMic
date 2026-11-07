@@ -64,6 +64,18 @@ if [[ -d "$SCRIPT_DIR/Resources/RemoteImages" ]]; then
   ditto "$SCRIPT_DIR/Resources/RemoteImages" \
     "$CONTENTS/Resources/RemoteImages"
 fi
+DRIVER="$SCRIPT_DIR/Driver/build/vRemoteDriver.driver"
+if [[ -d "$DRIVER" ]]; then
+  mkdir -p "$CONTENTS/Resources/Driver"
+  ditto "$DRIVER" "$CONTENTS/Resources/Driver/vRemoteDriver.driver"
+else
+  print -u2 "Warning: $DRIVER not found; bundle will not include the audio driver."
+fi
+for script in install.sh uninstall.sh install-helper.sh uninstall-helper.sh "Install vRemote.command"; do
+  [[ -f "$SCRIPT_DIR/$script" ]] || continue
+  cp "$SCRIPT_DIR/$script" "$SCRIPT_DIR/dist/build/$script"
+done
+chmod 755 "$SCRIPT_DIR/dist/build/install.sh" "$SCRIPT_DIR/dist/build/Install vRemote.command" 2>/dev/null || true
 chmod 755 "$CONTENTS/MacOS/vRemote"
 chmod 755 "$CONTENTS/Helpers/vRemoteHIDHelper"
 # SwiftPM resource bundles may contain read-only privacy manifests. The app

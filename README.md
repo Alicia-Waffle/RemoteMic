@@ -76,7 +76,14 @@ vRemoter 把蓝牙语音遥控器变成 macOS 上的 Vibe Coding 控制器：遥
 
 Chromecast Remote 已实现语音键双模式：短按第一次打开、第二次关闭；长按时持续录音，松手自动关闭。APP 还提供按型号保存的按键映射，可把方向、确认、返回、Home、YouTube、Netflix、信源、音量等按键改为常用 macOS 操作。
 
-当前版本：`1.3.0`（本 Fork）
+当前版本：`1.4.0`（本 Fork）
+
+## 1.4.0 变更（本 Fork）
+
+- MacBook 麦克风改为**默认按需采集**：启动后不再常驻占用麦克风，仅在语音触发（键盘触发键、遥控器开麦、豆包进入录音）时打开，空闲 8 秒自动关闭；声道面板显示「按需待机 / 有声音」。
+- 麦克风声道新增「始终开启」开关，需要最低延迟或常驻电平时可切回旧行为；开关状态会持久化。
+- 顶栏改为三段式布局，拉开品牌、页面切换与右侧状态之间的间距。
+- 内置更新优先下载 Release 的 `.pkg`，没有 PKG 时退回 `.dmg`；发版统一用 `./release.sh` 同时附带两种安装包。
 
 ## 1.3.0 新增（本 Fork）
 
@@ -168,22 +175,25 @@ vRemoter 免费提供。制作不易，麻烦打个赏补偿一点我的 Token �
 ./package-app.sh
 ./build-pkg.sh
 ./build-dmg.sh
+# 构建 PKG + DMG 并直接发布到 GitHub Releases
+./release.sh
 ```
 
-- `PKG`：首次安装或驱动发生变化时使用，包含 APP 与音频驱动。
-- `DMG`：仅更新 APP，适合已经安装过驱动且本次驱动未变化的用户。
+- `PKG`：包含 APP 与音频驱动，首次安装和版本升级都用它；内置更新优先下载它。
+- `DMG`：仅包含 APP，适合已经安装过驱动、只想替换应用的场景。
+- `release.sh`：依次跑自测、构建 PKG 与 DMG，并用 `gh` 把两个安装包作为附件发到 `v$VERSION` 的 Release。可选参数为发布说明文件：`./release.sh notes.md`。
 
-1.2.0 的驱动没有变化：PKG 供首次安装，DMG 供已经安装过驱动的用户覆盖更新。当前发布包尚未完成 Developer ID 签名与公证，下载页必须明确标注这一状态；正式广泛分发前仍须完成签名、公证与真实机器安装验证。
+当前发布包尚未完成 Developer ID 签名与公证，下载页必须明确标注这一状态；正式广泛分发前仍须完成签名、公证与真实机器安装验证。
 
 ## 更新策略
 
-APP 从以下地址读取版本清单：
+APP 从 `Info.plist` 的 `VRReleasesURL` 读取版本清单，指向本 Fork 的 GitHub Releases API：
 
-`https://updates.vincentstudio.org/vremoter/releases.json`
+`https://api.github.com/repos/TheShadow178/vRemoter/releases?per_page=10`
 
-- 普通 APP 更新：清单中同时提供 DMG/PKG，APP 自动优先下载 DMG。
-- 驱动更新：将 `driver_update_required` 设为 `true`，APP 强制下载 PKG。
-- 首次安装：官网始终推荐 PKG。
+- 内置更新优先下载 Release 附件中的 `.pkg`，没有 PKG 时退回 `.dmg`。
+- 因此每次发版都必须附带 PKG 或 DMG，否则“立即更新”只能打开 Release 页面。
+- 首次安装同样推荐 PKG。
 
 购买链接从以下地址动态读取：
 
@@ -191,7 +201,7 @@ APP 从以下地址读取版本清单：
 
 修改公开配置即可控制购买入口，不需要重新发布 APP。没有启用且有效的购买链接时，APP 会隐藏“购买遥控器”按钮。
 
-> 本 Fork 已从 `Info.plist` 移除 `VRCommerceConfigURL`，不会再请求该地址。`VRReleasesURL` 仍指向原项目的更新清单，仅用于手动检查更新；本 Fork 的版本号高于原项目当前版本，因此不会提示降级。
+> 本 Fork 已从 `Info.plist` 移除 `VRCommerceConfigURL`，不会再请求该地址。`VRReleasesURL` 指向本 Fork 的 GitHub Releases（`TheShadow178/vRemoter`），检查更新与下载入口都来自该仓库；仍可通过 Info.plist 覆盖为其他清单地址。
 
 ## 发布前阻断项
 

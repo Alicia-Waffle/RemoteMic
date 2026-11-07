@@ -52,6 +52,9 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         "vRemoteDr", "vRemote", "MiRemoteV", "BlackHole", "Parrot",
     ]
 
+    // 按需采集：最后一次需要本地麦的信号消失后，等待这么久再关闭设备。
+    private static let captureIdleTimeout: TimeInterval = 8
+
     private let captureSession = AVCaptureSession()
     private let captureQueue = DispatchQueue(
         label: "local.simaqingfeng.vRemote.capture",
@@ -62,6 +65,10 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     private var mixActive = false
     private var macInputEnabled = AppStorage.macInputEnabled
     private var remoteInputEnabled = AppStorage.remoteInputEnabled
+    private var captureAlwaysOn = AppStorage.macCaptureAlwaysOn
+    private var doubaoRecording = false
+    private var captureActive = false
+    private var captureIdleWorkItem: DispatchWorkItem?
     private var outputDeviceID: AudioDeviceID?
     private var outputIOProcID: AudioDeviceIOProcID?
 
@@ -81,6 +88,7 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
 
     var onMacLevel: ((Double) -> Void)?
     var onRouteChanged: ((Bool) -> Void)?
+    var onCaptureActiveChanged: ((Bool) -> Void)?
     private var macLevelAt = Date.distantPast
     private var captureConfigured = false
 
@@ -100,7 +108,11 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
             startDiagnosticsTimer()
         }
         if macInputEnabled {
-            requestBuiltInMicAccess()
+            // 默认按需：启动时只确认权限，不打开采集会话。
+            prepareBuiltInMicAccess()
+            if captureAlwaysOn {
+                startMacCaptureIfNeeded(reason: "始终开启")
+            }
         } else {
             print("[AUDIO] MacBook 麦克风未勾选，不启动采集")
         }
@@ -144,7 +156,48 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
                 ? "[AUDIO] 麦克风优先链路开启 · 遥控器优先，断开自动回退本地麦"
                 : "[AUDIO] 麦克风优先链路关闭"
         )
+        if active {
+            startMacCaptureIfNeeded(reason: "遥控器录音")
+        } else {
+            scheduleMacCaptureIdleStop(reason: "遥控器停止")
+        }
         onRouteChanged?(active)
+    }
+
+    /// 语音触发键按下时提前打开本地麦，抵消 AVCaptureSession 的冷启动时间。
+    func prewarmMacCapture(reason: String = "语音触发") {
+        startMacCaptureIfNeeded(reason: reason)
+    }
+
+    /// 豆包自身的录音状态是兜底信号：键盘快捷键、语音键等入口都能覆盖到。
+    func setDoubaoRecording(_ recording: Bool) {
+        doubaoRecording = recording
+        if recording {
+            startMacCaptureIfNeeded(reason: "豆包录音")
+        } else {
+            scheduleMacCaptureIdleStop(reason: "豆包停止")
+        }
+    }
+
+    func setCaptureAlwaysOn(_ alwaysOn: Bool) {
+        guard captureAlwaysOn != alwaysOn else { return }
+        captureAlwaysOn = alwaysOn
+        AppStorage.macCaptureAlwaysOn = alwaysOn
+        if alwaysOn {
+            startMacCaptureIfNeeded(reason: "始终开启")
+        } else if isMixActive || doubaoRecording {
+            scheduleMacCaptureIdleStop(reason: "切换按需")
+        } else {
+            stopMacCapture(reason: "切换按需")
+        }
+    }
+
+    var isCaptureAlwaysOn: Bool { captureAlwaysOn }
+
+    var isMacCaptureActive: Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return captureActive
     }
 
     func setInputEnabled(mac: Bool, remote: Bool) {
@@ -186,10 +239,13 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     func stop() {
         diagnosticsTimer?.invalidate()
         diagnosticsTimer = nil
+        captureIdleWorkItem?.cancel()
+        captureIdleWorkItem = nil
 
         if captureSession.isRunning {
             captureSession.stopRunning()
         }
+        setCaptureActive(false)
 
         if let deviceID = outputDeviceID, let ioProcID = outputIOProcID {
             let stopStatus = AudioDeviceStop(deviceID, ioProcID)
@@ -205,16 +261,21 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
 
     // MARK: - Built-in microphone capture
 
-    private func requestBuiltInMicAccess() {
+    /// 仅确认权限，不打开采集会话；麦克风保持关闭。
+    private func prepareBuiltInMicAccess() {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized:
-            startBuiltInMicCapture()
+            print("[AUDIO] MacBook 麦克风已授权 · 按需采集待机")
         case .notDetermined:
             print("[AUDIO] 请求 MacBook 麦克风权限…")
             AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
                 DispatchQueue.main.async {
+                    guard let self else { return }
                     if granted {
-                        self?.startBuiltInMicCapture()
+                        print("[AUDIO] MacBook 麦克风权限已获取 · 按需采集待机")
+                        if self.captureAlwaysOn || self.isMixActive {
+                            self.startMacCaptureIfNeeded(reason: "权限已获取")
+                        }
                     } else {
                         print("[AUDIO] ⚠️ MacBook 麦克风权限被拒绝")
                     }
@@ -222,6 +283,62 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
             }
         default:
             print("[AUDIO] ⚠️ 没有 MacBook 麦克风权限；当前只能收到 X6 音频")
+        }
+    }
+
+    /// 按需启动：只有真正需要本地麦时才打开采集会话。
+    private func startMacCaptureIfNeeded(reason: String) {
+        captureIdleWorkItem?.cancel()
+        captureIdleWorkItem = nil
+        guard macInputEnabled else { return }
+
+        if captureConfigured {
+            captureQueue.async { [weak self] in
+                guard let self, !self.captureSession.isRunning else { return }
+                self.captureSession.startRunning()
+                self.setCaptureActive(true)
+                print("[AUDIO] MacBook 麦克风采集已启动（按需）: \(reason)")
+            }
+        } else {
+            startBuiltInMicCapture(reason: reason)
+        }
+    }
+
+    /// 最后一路需求消失后延迟关麦，避免连续语音输入反复冷启动。
+    private func scheduleMacCaptureIdleStop(reason: String) {
+        guard macInputEnabled, !captureAlwaysOn else { return }
+        captureIdleWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.captureIdleWorkItem = nil
+            guard self.macInputEnabled, !self.captureAlwaysOn else { return }
+            guard !self.isMixActive, !self.doubaoRecording else { return }
+            self.stopMacCapture(reason: reason)
+        }
+        captureIdleWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.captureIdleTimeout, execute: work)
+    }
+
+    private func stopMacCapture(reason: String) {
+        captureIdleWorkItem?.cancel()
+        captureIdleWorkItem = nil
+        captureQueue.async { [weak self] in
+            guard let self, self.captureSession.isRunning else { return }
+            self.captureSession.stopRunning()
+            self.setCaptureActive(false)
+            print("[AUDIO] MacBook 麦克风采集已暂停（按需）: \(reason)")
+        }
+    }
+
+    private func setCaptureActive(_ active: Bool) {
+        stateLock.lock()
+        let changed = captureActive != active
+        captureActive = active
+        stateLock.unlock()
+        guard changed else { return }
+        if !active { onMacLevel?(-120) }
+        DispatchQueue.main.async { [weak self] in
+            self?.onCaptureActiveChanged?(active)
         }
     }
 
@@ -253,11 +370,23 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         }
     }
 
-    private func startBuiltInMicCapture() {
+    private func startBuiltInMicCapture(reason: String) {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            break
+        case .notDetermined:
+            prepareBuiltInMicAccess()
+            return
+        default:
+            print("[AUDIO] ⚠️ 没有 MacBook 麦克风权限，无法按需开启")
+            return
+        }
+
         if captureConfigured {
             captureQueue.async { [weak self] in
                 guard let self, !self.captureSession.isRunning else { return }
                 self.captureSession.startRunning()
+                self.setCaptureActive(true)
                 print("[AUDIO] MacBook 麦克风采集已恢复")
             }
             return
@@ -295,8 +424,9 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
             captureQueue.async { [weak self] in
                 guard let self else { return }
                 self.captureSession.startRunning()
+                self.setCaptureActive(true)
                 print(
-                    "[AUDIO] MacBook 麦克风采集已启动: " +
+                    "[AUDIO] MacBook 麦克风采集已启动（按需: \(reason)): " +
                     "\(device.localizedName), running=\(self.captureSession.isRunning)"
                 )
             }
@@ -382,14 +512,10 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
 
     private func setMacCaptureEnabled(_ enabled: Bool) {
         if enabled {
-            requestBuiltInMicAccess()
+            startMacCaptureIfNeeded(reason: "手动开启")
             return
         }
-        captureQueue.async { [weak self] in
-            guard let self, self.captureSession.isRunning else { return }
-            self.captureSession.stopRunning()
-            print("[AUDIO] MacBook 麦克风采集已暂停")
-        }
+        stopMacCapture(reason: "手动关闭")
     }
 
     private func schedule(

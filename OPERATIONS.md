@@ -60,42 +60,28 @@ Spaceship DNS
 
 ## 4. 发布规则
 
-### 首次安装或驱动变化
+发布源为 GitHub Releases（`TheShadow178/vRemoter`），APP 读取 `VRReleasesURL` 并优先下载附件中的 `.pkg`。
 
-1. 更新 `Packaging/Info.plist` 版本号与构建号。
-2. 运行测试、签名、公证和 `build-pkg.sh`。
-3. 上传版本化 PKG，并更新 `vRemoter-latest.pkg`。
-4. 在 `releases.json` 中将 `driver_update_required` 设为 `true`。
+### 每次发版
 
-### 仅 APP 变化
+1. 更新 `Packaging/Info.plist` 的版本号与构建号。
+2. 按需完成 Developer ID 签名与公证。
+3. 运行 `./release.sh`（可选参数为发布说明文件），它会自动跑自测、构建 PKG + DMG，并把两个安装包上传到 `v<version>` Release。
+4. Release 必须同时附带 PKG 与 DMG：PKG 供首次安装与内置升级，DMG 供只想替换 APP 的老用户。
+5. 在真实机器上验证 PKG 安装、DMG 覆盖更新和 APP 内“检查更新”。
 
-1. 更新版本号与构建号。
-2. 运行测试、签名、公证和 `build-dmg.sh`。
-3. 同时保留 PKG 给首次安装用户，DMG 给已安装用户。
-4. 在 `releases.json` 中将 `driver_update_required` 设为 `false`。
-5. APP 自动更新优先选择 DMG；官网明确标注两者用途。
+### 附件要求
 
-### 清单资产格式
+- 文件名以 `.pkg` 或 `.dmg` 结尾，内置更新只认这两种后缀。
+- Tag 使用 `v<CFBundleShortVersionString>`；草稿与预发布版本默认不会被普通用户更新到。
+- GitHub 自动为附件生成 `digest`（`sha256:` 开头），客户端会校验；手工上传时也要保留该字段。
 
-```json
-{
-  "name": "vRemoter-<version>.dmg",
-  "browser_download_url": "https://updates.vincentstudio.org/vremoter/vRemoter-<version>.dmg",
-  "digest": "sha256:..."
-}
-```
+### 回滚
 
-发布前对每个文件执行 SHA-256，并把结果写入清单。
+- Release 出错时，用 `gh release upload <tag> <file> --clobber` 替换附件，或把 Release 标记为预发布。
+- 不要删除仍被旧版本客户端引用的 Release。
 
-## 5. 回滚
-
-- 不覆盖已发布的版本化安装包。
-- `vRemoter-latest.pkg` 只是当前稳定版本的副本或软链接。
-- 更新清单出错时，恢复上一个 `releases.json`。
-- 官网出错时，恢复上一个网站目录快照并 reload Caddy。
-- 小红书配置错误时，恢复上一个 `commerce.json`；客户端会继续使用最后一次成功缓存。
-
-## 6. 发布前检查表
+## 5. 发布前检查表
 
 在本项目中，用户只要说“发版”，默认执行本节全部流程。小版本只更新版本信息和 Release Notes，不重做介绍页或 Marketing 素材；大版本再根据功能变化更新介绍页截图、文案和 Marketing 素材。
 

@@ -40,6 +40,8 @@ final class DoubaoAudioStateMonitor {
     private var lastSnapshot: Snapshot?
 
     var onSnapshotChanged: ((Snapshot) -> Void)?
+    /// 录音开关的轻量回调，给按需麦克风采集做兜底信号。
+    var onRecordingChanged: ((Bool) -> Void)?
 
     private lazy var processListListener: AudioObjectPropertyListenerBlock = {
         [weak self] _, _ in
@@ -178,6 +180,7 @@ final class DoubaoAudioStateMonitor {
         guard started else { return }
         let snapshot = readCurrentSnapshot()
         guard force || snapshot != lastSnapshot else { return }
+        let recordingChanged = lastSnapshot?.isRecording != snapshot.isRecording
         lastSnapshot = snapshot
         print(
             "[DOUBAO-STATE] state=\(snapshot.state.rawValue) " +
@@ -193,6 +196,7 @@ final class DoubaoAudioStateMonitor {
             )
         }
         onSnapshotChanged?(snapshot)
+        if recordingChanged { onRecordingChanged?(snapshot.isRecording) }
     }
 
     private func readCurrentSnapshot() -> Snapshot {

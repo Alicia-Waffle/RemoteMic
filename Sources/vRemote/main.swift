@@ -162,6 +162,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.x6SearchSuppressor.arm()
         }
         x6SearchSuppressor.onTriggerDownObserved = { [weak self] synthetic in
+            // 先按需打开本地麦，再让按键事件进入豆包，抵消采集冷启动。
+            AudioPipe.shared.prewarmMacCapture(reason: "键盘触发")
             self?.x6Session.triggerDownObserved(isSynthetic: synthetic)
         }
         x6SearchSuppressor.onTriggerUpObserved = { [weak self] synthetic in
@@ -274,6 +276,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 print("[AUDIO] 遥控器未勾选，跳过主动开麦")
                 return .unavailable
             }
+            AudioPipe.shared.prewarmMacCapture(reason: "遥控器开麦")
             return self?.openRemoteMicrophone(
                 remote,
                 bypassDebounce: bypassDebounce
@@ -298,6 +301,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         AudioPipe.shared.onRouteChanged = { [weak self] _ in
             self?.updateStatus()
+        }
+        AudioPipe.shared.onCaptureActiveChanged = { [weak self] _ in
+            self?.updateStatus()
+        }
+        // 豆包开始/结束录音是兜底信号：键盘、遥控器、语音键都能触发按需开麦。
+        doubaoAudioState.onRecordingChanged = { recording in
+            AudioPipe.shared.setDoubaoRecording(recording)
         }
 
         DispatchQueue.main.async { [weak self] in
@@ -505,6 +515,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             remoteStreaming: remoteStreaming,
             macInputEnabled: AudioPipe.shared.isMacInputEnabled,
             remoteInputEnabled: AudioPipe.shared.isRemoteInputEnabled,
+            macCaptureActive: AudioPipe.shared.isMacCaptureActive,
+            macCaptureAlwaysOn: AudioPipe.shared.isCaptureAlwaysOn,
             doubaoIsRecording: doubaoSnapshot.isRecording,
             doubaoInput: doubaoSnapshot.deviceSummary,
             driverAvailable: AudioPipe.shared.isOutputDeviceAvailable,
@@ -543,6 +555,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             } else if self?.doubaoAudioState.snapshotNow().isRecording == true {
                 self?.openPreferredRemoteMicrophone()
             }
+            self?.updateStatus()
+        }
+        debugWindow.onMacCaptureAlwaysOnChanged = { [weak self] enabled in
+            AudioPipe.shared.setCaptureAlwaysOn(enabled)
             self?.updateStatus()
         }
         debugWindow.onInputTriggerChanged = { [weak self] in

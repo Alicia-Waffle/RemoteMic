@@ -5,6 +5,7 @@ enum AppStorage {
     static let recordingEnabledKey = "recordingEnabled"
     static let macInputEnabledKey = "macInputEnabled"
     static let remoteInputEnabledKey = "remoteInputEnabled"
+    static let macCaptureAlwaysOnKey = "macCaptureAlwaysOn"
     static let inputTriggerKeyKey = "inputTriggerKey"
 
     static let logsDirectory: URL = {
@@ -33,6 +34,7 @@ enum AppStorage {
             recordingEnabledKey: false,
             macInputEnabledKey: true,
             remoteInputEnabledKey: true,
+            macCaptureAlwaysOnKey: false,
             inputTriggerKeyKey: InputTriggerKey.option.rawValue,
         ])
         ensureDirectory(logsDirectory)
@@ -60,6 +62,12 @@ enum AppStorage {
     static var remoteInputEnabled: Bool {
         get { UserDefaults.standard.bool(forKey: remoteInputEnabledKey) }
         set { UserDefaults.standard.set(newValue, forKey: remoteInputEnabledKey) }
+    }
+
+    /// 默认按需采集：只有语音触发时才打开 Mac 麦克风。
+    static var macCaptureAlwaysOn: Bool {
+        get { UserDefaults.standard.bool(forKey: macCaptureAlwaysOnKey) }
+        set { UserDefaults.standard.set(newValue, forKey: macCaptureAlwaysOnKey) }
     }
 
     static var inputTriggerKey: InputTriggerKey {
