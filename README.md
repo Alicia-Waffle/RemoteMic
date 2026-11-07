@@ -1,8 +1,67 @@
-# vRemoter
+# vRemoter（Chromecast 按键修复分支）
 
-> 本仓库保存 vRemoter 的源码、设计源稿、构建脚本与测试。普通用户请通过 `vincentstudio.org` 系列域名访问官网、下载与更新服务。
+> 本仓库是 [VincentKingHsu/vRemoter](https://github.com/VincentKingHsu/vRemoter) 的 Fork，由 TheShadow178 维护。
+> 原仓库保存 vRemoter 的源码、设计源稿、构建脚本与测试；本 Fork 修掉了 macOS 26 上 Chromecast 遥控器按键映射失效的问题，并移除了遥测依赖。
 
-[官方网站](https://vremoter.vincentstudio.org/) · [下载最新版](https://updates.vincentstudio.org/vremoter/) · [v1.1.1 Release](https://github.com/VincentKingHsu/vRemoter/releases/tag/v1.1.1)
+[原项目](https://github.com/VincentKingHsu/vRemoter) · [原项目官网](https://vremoter.vincentstudio.org/) · 本 Fork 版本：`1.2.0`
+
+## 这个 Fork 修了什么
+
+原版 v1.1.1 里，Chromecast 遥控器的**语音键可用，但按键映射全部无效**（对应原仓库 Issue #3、#4）：
+
+```
+[CAST-HID] manager open failed: 0xE00002C1
+```
+
+`0xE00002C1` 是 `kIOReturnNotPrivileged`。根因在 macOS 的 IOHIDFamily：
+
+```cpp
+// IOHIDFamily/IOHIDLibUserClient.cpp
+if (!_privilegedClient) {
+    __Require_Action(!fNubIsKeyboard ||
+        ((options & kIOHIDOptionsTypeSeizeDevice) == 0),
+        exit, ret = kIOReturnNotPrivileged);
+```
+
+Chromecast 遥控器的 HID collection 属于 keyboard 类。非特权进程用 `kIOHIDOptionsTypeSeizeDevice` 打开它，一定拿到 `kIOReturnNotPrivileged`；改用共享打开虽然能开，却收不到按键报告，也拦不住遥控器原本的媒体键行为。`_privilegedClient` 只认两个 Apple 私有 entitlement 或 `kIOClientPrivilegeAdministrator`；本机实测 ad-hoc 签名 + 私有 entitlement 会被 AMFI 直接 SIGKILL，所以**唯一可行路径是 root**。
+
+本 Fork 的做法：
+
+- 新增最小化的 root 守护进程 `vRemoteHIDHelper`（`Sources/vRemoteHIDHelper`），由 launchd 以 root 常驻；
+- 它独占（seize）`VID 0x18D1 / PID 0x9450` 的 HID collection，解析按键报告，通过 XPC 只把「按键 usage + 按下/松开」回传给 App；
+- App 侧新增 `ChromecastHIDHelperClient`，启动时探测 helper；helper 不在就退回原来的进程内模式并打印原因，不会静默失效；
+- helper 校验连接方进程的代码签名 identifier（`local.simaqingfeng.vRemote`），其他进程无法订阅按键；
+- 移除 TelemetryDeck 依赖与 `VRTelemetryDeck*` 配置，App 不再上报任何遥测；构建不再需要联网拉依赖。
+
+## 支持范围
+
+- Google Chromecast Voice Remote（含杰理/JL 克隆版，VID `0x18D1` / PID `0x9450`）：语音键 + 全部按键映射。
+- X6-Remote（VID `0x1D5A` / PID `0xC081`）：保持原仓库行为。
+- 按键映射需要本机安装 root helper；不装 helper 时语音仍可用，按键映射不可用（原因见上）。
+
+## 安装
+
+```bash
+./package-app.sh          # 编译 App + helper，生成 dist/build/vRemote.app
+./install-app.sh          # 复制到 ~/Applications
+sudo ./install-helper.sh  # 安装 root helper（launchd + /Library/PrivilegedHelperTools）
+```
+
+卸载 helper：
+
+```bash
+sudo ./uninstall-helper.sh
+```
+
+> 每次升级本 Fork 的 App 后，建议重跑一次 `sudo ./install-helper.sh`，让 helper 与 App 的 XPC 协议保持一致。
+
+## 已知限制
+
+- 只按 VID/PID 匹配，不校验设备名；同 VID/PID 的其他设备也会被接管。
+- helper 为 ad-hoc 签名，按代码签名 identifier 校验对端。能本机 ad-hoc 签名同 identifier 应用的攻击者可以伪装成 App，这是未做 Developer ID 签名的本机构建的固有限制。
+- 本项目未做 Apple 公证；首次运行需在「系统设置 → 隐私与安全性」里放行。
+- 原项目功能与文案版权归原作者，本 Fork 仅维护上述修复。
+
 
 ## 产品定位
 
@@ -15,7 +74,14 @@ vRemoter 把蓝牙语音遥控器变成 macOS 上的 Vibe Coding 控制器：遥
 
 Chromecast Remote 已实现语音键双模式：短按第一次打开、第二次关闭；长按时持续录音，松手自动关闭。APP 还提供按型号保存的按键映射，可把方向、确认、返回、Home、YouTube、Netflix、信源、音量等按键改为常用 macOS 操作。
 
-当前版本：`1.1.1`
+当前版本：`1.2.0`（本 Fork）
+
+## 1.2.0 修复（本 Fork）
+
+- 修复 macOS 26 上 Chromecast 遥控器按键映射全部失效的问题：新增 root HID helper 完成 seize，App 与 helper 之间通过 XPC 通信。
+- helper 缺失或 seize 失败时明确打印 `0xE00002C1` 原因并降级，不再静默失效。
+- 移除 TelemetryDeck 遥测依赖；App 不再上报事件，构建完全离线。
+- 新增 `install-helper.sh` / `uninstall-helper.sh`；打包脚本会把 helper 放进 `vRemote.app/Contents/Helpers/`。
 
 ## 1.1.1 修复
 
@@ -69,6 +135,8 @@ vRemoter 免费提供。制作不易，麻烦打个赏补偿一点我的 Token �
 ## 目录
 
 - `Sources/vRemote/`：APP 主程序、BLE/ATVV、双麦混音、UI、更新与购买配置。
+- `Sources/vRemoteHIDHelper/`：本 Fork 新增的 root HID helper（按键独占与 XPC 回传）。
+- `Sources/HIDHelperShared/`：APP 与 helper 共用的 XPC 协议与常量。
 - `Driver/`：生成 `vRemoteDriver.driver` 的实验性构建脚本。
 - `Packaging/`：APP 元数据、本地化与 PKG 安装脚本。
 - `Resources/`：APP 内置权限向导、商业入口与支持开发图片。
@@ -90,7 +158,7 @@ vRemoter 免费提供。制作不易，麻烦打个赏补偿一点我的 Token �
 - `PKG`：首次安装或驱动发生变化时使用，包含 APP 与音频驱动。
 - `DMG`：仅更新 APP，适合已经安装过驱动且本次驱动未变化的用户。
 
-1.1.1 的驱动没有变化：PKG 供首次安装，DMG 供已经安装过驱动的用户覆盖更新。当前发布包尚未完成 Developer ID 签名与公证，下载页必须明确标注这一状态；正式广泛分发前仍须完成签名、公证与真实机器安装验证。
+1.2.0 的驱动没有变化：PKG 供首次安装，DMG 供已经安装过驱动的用户覆盖更新。当前发布包尚未完成 Developer ID 签名与公证，下载页必须明确标注这一状态；正式广泛分发前仍须完成签名、公证与真实机器安装验证。
 
 ## 更新策略
 
@@ -107,6 +175,8 @@ APP 从以下地址读取版本清单：
 `https://updates.vincentstudio.org/vremoter/commerce.json`
 
 修改公开配置即可控制购买入口，不需要重新发布 APP。没有启用且有效的购买链接时，APP 会隐藏“购买遥控器”按钮。
+
+> 本 Fork 已从 `Info.plist` 移除 `VRCommerceConfigURL`，不会再请求该地址。`VRReleasesURL` 仍指向原项目的更新清单，仅用于手动检查更新；本 Fork 的版本号高于原项目当前版本，因此不会提示降级。
 
 ## 发布前阻断项
 

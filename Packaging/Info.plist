@@ -19,21 +19,15 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.1.1</string>
+    <string>1.2.0</string>
     <key>CFBundleVersion</key>
-    <string>111</string>
+    <string>120</string>
     <key>LSMinimumSystemVersion</key>
     <string>12.0</string>
     <key>LSUIElement</key>
     <true/>
     <key>VRReleasesURL</key>
     <string>https://updates.vincentstudio.org/vremoter/releases.json</string>
-    <key>VRCommerceConfigURL</key>
-    <string>https://updates.vincentstudio.org/vremoter/commerce.json</string>
-	<key>VRTelemetryDeckAppID</key>
-	<string>0B41E7AD-49DA-4A8F-B216-BCF13B3A2D25</string>
-	<key>VRTelemetryDeckNamespace</key>
-	<string>cn.live</string>
     <key>NSBluetoothAlwaysUsageDescription</key>
     <string>连接蓝牙语音遥控器并接收语音音频。</string>
     <key>NSBluetoothPeripheralUsageDescription</key>

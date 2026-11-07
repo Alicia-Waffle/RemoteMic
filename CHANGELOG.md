@@ -1,5 +1,24 @@
 # 更新日志
 
+## v1.2.0 · 2026-11-07（本 Fork）
+
+### 修复
+
+- 修复 macOS 26 上 Chromecast Voice Remote 按键映射全部失效的问题（原仓库 Issue #3 / #4，日志 `manager open failed: 0xE00002C1`）。原因是键盘类 HID collection 的 `kIOHIDOptionsTypeSeizeDevice` 只允许特权进程，非 root 一定得到 `kIOReturnNotPrivileged`。
+- 新增 root 守护进程 `vRemoteHIDHelper`，由 launchd 常驻，独占遥控器 HID collection 并通过 XPC 回传按键事件。
+- App 侧新增 `ChromecastHIDHelperClient`：启动探测 helper，1.2 秒内不可用则回退原进程内路径并明确打印失败原因。
+- helper 校验对端进程代码签名 identifier，非本 App 的连接一律拒绝。
+
+### 变更
+
+- 移除 TelemetryDeck 依赖与 `VRTelemetryDeck*`、`VRCommerceConfigURL` 配置：App 不再上报遥测，也不再拉取商业配置。
+- 新增 `install-helper.sh` / `uninstall-helper.sh`。
+- `package-app.sh` 会把 helper 打进 `vRemote.app/Contents/Helpers/` 并先签 helper 再签 App。
+
+### 更新说明
+
+- 首次使用按键映射需要执行一次 `sudo ./install-helper.sh`；不安装时语音功能不受影响。
+
 ## v1.1.1 · 2026-09-03
 
 ### 修复

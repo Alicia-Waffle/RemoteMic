@@ -4,22 +4,26 @@ import PackageDescription
 let package = Package(
     name: "vRemote",
     platforms: [.macOS(.v12)],
-    dependencies: [
-        .package(
-            url: "https://github.com/TelemetryDeck/SwiftSDK.git",
-            exact: "2.9.10"
-        )
-    ],
     targets: [
+        // Shared XPC contract between the app and the privileged HID helper.
+        .target(
+            name: "HIDHelperShared",
+            path: "Sources/HIDHelperShared"
+        ),
         .executableTarget(
             name: "vRemote",
-            dependencies: [
-                .product(name: "TelemetryDeck", package: "SwiftSDK")
-            ],
+            dependencies: ["HIDHelperShared"],
             path: "Sources/vRemote",
             swiftSettings: [
                 .define("DEBUG", .when(configuration: .debug))
             ]
-        )
+        ),
+        // Runs as root via launchd; seizes the keyboard-class HID collection
+        // that macOS refuses to hand to an unprivileged process.
+        .executableTarget(
+            name: "vRemoteHIDHelper",
+            dependencies: ["HIDHelperShared"],
+            path: "Sources/vRemoteHIDHelper"
+        ),
     ]
 )
