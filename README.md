@@ -1,9 +1,9 @@
-# RemoteMic（vRemoter Fork）
+# RemoteMic
 
-> 本仓库是 [VincentKingHsu/vRemoter](https://github.com/VincentKingHsu/vRemoter) 的 Fork，由 TheShadow178 维护；本 Fork 的产品名为 **RemoteMic**。
-> 原仓库保存 vRemoter 的源码、设计源稿、构建脚本与测试；本 Fork 修掉了 macOS 26 上 Chromecast 遥控器按键映射失效的问题，并移除了遥测依赖。
+> RemoteMic 由 TheShadow178 维护，Fork 自 [vRemoter](https://github.com/VincentKingHsu/vRemoter)（MIT 许可）。
+> 本 Fork 修掉了 macOS 26 上 Chromecast 遥控器按键映射失效的问题，并移除了遥测依赖。
 
-[原项目](https://github.com/VincentKingHsu/vRemoter) · [原项目官网](https://vremoter.vincentstudio.org/) · 本 Fork 版本：`1.4.3`
+[上游项目](https://github.com/VincentKingHsu/vRemoter) · 本 Fork 版本：`1.4.3`
 
 ## 这个 Fork 修了什么
 
@@ -134,12 +134,12 @@ Chromecast Remote 已实现语音键双模式：短按第一次打开、第二�
 - 新增 X6 Remote 与 Chromecast Voice Remote 按键映射页面。
 - 豆包语音触发键可选择 Option、Command、Control、Shift 或 Fn，默认 Option；所选按键必须与豆包输入法设置一致。
 - 映射设置跟随型号，不绑定某一只遥控器；更换同型号设备后继续沿用。
-- 启用映射后拦截设备原始动作，再由 vRemoter 发送所选键盘、媒体键或自定义快捷键；关闭映射即可恢复系统原行为。
+- 启用映射后拦截设备原始动作，再由 RemoteMic 发送所选键盘、媒体键或自定义快捷键；关闭映射即可恢复系统原行为。
 - 主控制台去掉 X6 专属措辞，X6 与 Chromecast Remote 可以同时连接。
 
-![vRemoter 1.1.1 音频控制台](docs/assets/screenshots/vremoter-audio-1.1.1.png)
+![RemoteMic 1.4.3 音频控制台](docs/assets/screenshots/remotemic-audio-1.4.3.png)
 
-![vRemoter 1.1.1 Chromecast 按键映射](docs/assets/screenshots/vremoter-mapping-chromecast-1.1.1.png)
+![RemoteMic 1.4.3 Chromecast 按键映射](docs/assets/screenshots/remotemic-mapping-chromecast-1.4.3.png)
 
 完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 

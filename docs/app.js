@@ -15,14 +15,14 @@ function applyLanguage(nextLanguage) {
   const audioImage = document.querySelector('[data-localized-audio]');
   if (audioImage) {
     audioImage.src = language === 'zh'
-      ? 'assets/screenshots/vremoter-audio-1.1.1.png'
-      : 'assets/screenshots/vremoter-audio-1.1.1-en.png';
+      ? 'assets/screenshots/remotemic-audio-1.4.3.png'
+      : 'assets/screenshots/remotemic-audio-1.4.3-en.png';
   }
   const mappingImage = document.querySelector('[data-localized-mapping]');
   if (mappingImage) {
     mappingImage.src = language === 'zh'
-      ? 'assets/screenshots/vremoter-mapping-chromecast-1.1.1.png'
-      : 'assets/screenshots/vremoter-mapping-chromecast-1.1.1-en.png';
+      ? 'assets/screenshots/remotemic-mapping-chromecast-1.4.3.png'
+      : 'assets/screenshots/remotemic-mapping-chromecast-1.4.3-en.png';
   }
   localStorage.setItem('remotemic-language', language);
 }
