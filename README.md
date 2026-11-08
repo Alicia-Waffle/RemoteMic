@@ -3,7 +3,7 @@
 > RemoteMic 由 TheShadow178 维护，Fork 自 [vRemoter](https://github.com/VincentKingHsu/vRemoter)（MIT 许可）。
 > 本 Fork 修掉了 macOS 26 上 Chromecast 遥控器按键映射失效的问题，并移除了遥测依赖。
 
-[上游项目](https://github.com/VincentKingHsu/vRemoter) · 本 Fork 版本：`1.4.3`
+[上游项目](https://github.com/VincentKingHsu/vRemoter) · 本 Fork 版本：`1.4.5`
 
 ## 这个 Fork 修了什么
 
@@ -35,9 +35,20 @@ Chromecast 遥控器的 HID collection 属于 keyboard 类。非特权进程用 
 
 ## 支持范围
 
-- Google Chromecast Voice Remote（含杰理/JL 克隆版，VID `0x18D1` / PID `0x9450`）：语音键 + 全部按键映射。
-- X6-Remote（VID `0x1D5A` / PID `0xC081`）：保持原仓库行为。
-- 按键映射需要本机安装 root helper；不装 helper 时语音仍可用，按键映射不可用（原因见上）。
+语音和按键映射都依赖设备同时满足两点：BLE HID 的 VID/PID 为 `0x18D1 / 0x9450`，且支持 Google ATVV 语音服务。程序只按 VID/PID 匹配，不校验设备名。
+
+| 遥控器版本 | 典型型号 | 支持情况 | 说明 |
+|---|---|---|---|
+| 原厂 Chromecast with Google TV 遥控器（2020，HD/4K 套装） | G9N9N / 10395A-G9N9N | ✅ 完整支持 | 语音 + 全部按键映射 |
+| 解离版（已从原套装/原机解绑的同款遥控器） | G9N9N | ✅ 完整支持 | 「解离」只影响能否自由配对，不决定兼容性；仍需是 BLE + ATVV 版本 |
+| 第三方克隆版（杰理/JL、Mecool G10 等） | 仿 G9N9N / G10 | ⚠️ 视固件 | 仅当完整仿冒 `0x18D1:0x9450` 且保留 ATVV 语音时可用；纯红外或 2.4G 版本不支持 |
+| Google TV Streamer 遥控器（2024） | GA05662 | ❌ 暂不支持 | 尺寸更大、带响铃与自定义键，PID 和语音实现都不同 |
+| 小米 / 其他 Android TV 遥控器 | 小米蓝牙语音遥控器 `0x2717:0x32B8` | ❌ 不支持 | VID/PID 与语音链路不同 |
+| X6-Remote | `0x1D5A / 0xC081` | ✅ 保持上游行为 | 语音 + 按键映射 |
+
+购买时确认三件事：① 是蓝牙 BLE 版，不是纯红外/2.4G；② HID 为 `18D1:9450`；③ 麦克风键能正常唤出语音（ATVV）。
+
+按键映射需要本机安装 root helper；不装 helper 时语音仍可用，按键映射不可用（原因见上）。
 
 ## 安装
 
@@ -76,7 +87,20 @@ RemoteMic 把蓝牙语音遥控器变成 macOS 上的 Vibe Coding 控制器：�
 
 Chromecast Remote 已实现语音键双模式：短按第一次打开、第二次关闭；长按时持续录音，松手自动关闭。APP 还提供按型号保存的按键映射，可把方向、确认、返回、Home、YouTube、Netflix、信源、音量等按键改为常用 macOS 操作。
 
-当前版本：`1.4.3`（本 Fork）
+当前版本：`1.4.5`（本 Fork）
+
+## 1.4.5 变更（本 Fork）
+
+- 修复语音结束后虚拟设备 IOProc 不释放、macOS 一直显示麦克风被占用的问题：豆包停止时补一次空闲释放。
+- README 增加遥控器版本兼容性表。
+
+## 1.4.4 变更（本 Fork）
+
+- helper 每次 seize 重建 `IOHIDManager`，修复 App 重启后「seize 成功但收不到按键」。
+- 合成 `⌃←` / `⌃→` 补齐 Fn 位，系统「切换桌面」正常响应。
+- 录制器改用 HID 级 `CGEventTap`，录制系统快捷键时不再切换桌面。
+- 映射开关与映射修改热更，无需重启；新增出厂默认映射。
+- 默认显示 Dock 图标（`.regular`），可在「高级功能」中关闭。
 
 ## 1.4.3 变更（本 Fork）
 

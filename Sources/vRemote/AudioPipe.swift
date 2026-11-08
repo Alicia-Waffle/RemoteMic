@@ -181,6 +181,9 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
             startMacCaptureIfNeeded(reason: "豆包录音")
         } else {
             scheduleMacCaptureIdleStop(reason: "豆包停止")
+            // 豆包停止和语音链路关闭常常同一时刻到达。这里补一次释放，
+            // 避免语音链路先关、豆包状态后置为 false 时 IOProc 一直悬着。
+            releaseOutputIfIdle()
         }
     }
 
