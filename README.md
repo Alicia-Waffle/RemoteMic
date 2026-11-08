@@ -76,7 +76,12 @@ RemoteMic 把蓝牙语音遥控器变成 macOS 上的 Vibe Coding 控制器：�
 
 Chromecast Remote 已实现语音键双模式：短按第一次打开、第二次关闭；长按时持续录音，松手自动关闭。APP 还提供按型号保存的按键映射，可把方向、确认、返回、Home、YouTube、Netflix、信源、音量等按键改为常用 macOS 操作。
 
-当前版本：`1.4.2`（本 Fork）
+当前版本：`1.4.3`（本 Fork）
+
+## 1.4.3 变更（本 Fork）
+
+- GitHub 仓库改名为 `RemoteMic`，App 的 `VRReleasesURL` 与文档链接指向新仓库。
+- App 打赏窗口移除 PayPal 标签，只保留微信 / 支付宝（与 README、官网一致）。
 
 ## 1.4.2 变更（本 Fork）
 

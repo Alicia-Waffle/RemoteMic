@@ -2057,7 +2057,6 @@ private extension CommerceStore {
 private enum DonationProvider: String, CaseIterable, Identifiable {
     case wechat
     case alipay
-    case paypal
 
     var id: String { rawValue }
 
@@ -2065,7 +2064,6 @@ private enum DonationProvider: String, CaseIterable, Identifiable {
         switch self {
         case .wechat: L10n.text("微信", "WeChat")
         case .alipay: L10n.text("支付宝", "Alipay")
-        case .paypal: "PayPal"
         }
     }
 
@@ -2073,7 +2071,6 @@ private enum DonationProvider: String, CaseIterable, Identifiable {
         switch self {
         case .wechat: "wechat-qr.png"
         case .alipay: "alipay-qr.png"
-        case .paypal: "paypal-qr.png"
         }
     }
 
@@ -2081,7 +2078,6 @@ private enum DonationProvider: String, CaseIterable, Identifiable {
         switch self {
         case .wechat: Color(red: 0.027, green: 0.757, blue: 0.376)
         case .alipay: Color(red: 0.086, green: 0.467, blue: 1.0)
-        case .paypal: Color(red: 0.0, green: 0.188, blue: 0.529)
         }
     }
 }
