@@ -1,10 +1,17 @@
 import Foundation
 
+func pass(_ message: String) {
+    // 测试二进制里 Log.swift 覆盖了全局 print，这里直接写标准输出。
+    FileHandle.standardOutput.write(Data("PASS: \(message)\n".utf8))
+}
+
+func fail(_ message: String) -> Never {
+    FileHandle.standardError.write(Data("FAIL: \(message)\n".utf8))
+    exit(1)
+}
+
 func require(_ condition: @autoclosure () -> Bool, _ message: String) {
-    guard condition() else {
-        FileHandle.standardError.write(Data("FAIL: \(message)\n".utf8))
-        exit(1)
-    }
+    guard condition() else { fail(message) }
 }
 
 do {
@@ -71,10 +78,11 @@ do {
         "new unsynchronized stream sequence did not reset"
     )
 
-    print("PASS: repeated AUDIO_START resets unsynchronized streams")
-    print("PASS: AUDIO_START preserves a fresh AUDIO_SYNC")
-    print("PASS: active-stream AUDIO_SYNC does not leak into next stream")
+    pass("repeated AUDIO_START resets unsynchronized streams")
+    pass("AUDIO_START preserves a fresh AUDIO_SYNC")
+    pass("active-stream AUDIO_SYNC does not leak into next stream")
 } catch {
-    FileHandle.standardError.write(Data("FAIL: \(error)\n".utf8))
-    exit(1)
+    fail("\(error)")
 }
+
+runActionSelfTests()

@@ -3,7 +3,7 @@
 > RemoteMic 由 TheShadow178 维护，Fork 自 [vRemoter](https://github.com/VincentKingHsu/vRemoter)（MIT 许可）。
 > 本 Fork 修掉了 macOS 26 上 Chromecast 遥控器按键映射失效的问题，并移除了遥测依赖。
 
-[上游项目](https://github.com/VincentKingHsu/vRemoter) · 本 Fork 版本：`1.4.5`
+[上游项目](https://github.com/VincentKingHsu/vRemoter) · 本 Fork 版本：`1.5.0`
 
 ## 这个 Fork 修了什么
 
@@ -87,7 +87,14 @@ RemoteMic 把蓝牙语音遥控器变成 macOS 上的 Vibe Coding 控制器：�
 
 Chromecast Remote 已实现语音键双模式：短按第一次打开、第二次关闭；长按时持续录音，松手自动关闭。APP 还提供按型号保存的按键映射，可把方向、确认、返回、Home、YouTube、Netflix、信源、音量等按键改为常用 macOS 操作。
 
-当前版本：`1.4.5`（本 Fork）
+当前版本：`1.5.0`（本 Fork）
+
+## 1.5.0 变更（本 Fork）
+
+- 映射新增「输入固定文本…」：按键即粘贴预设文字，剪贴板 0.3 秒后还原。
+- 映射新增「多步动作…」：按键、输入文本、打开 App、聚焦输入框、等待、等待语音结束可自由组合；单步即组合键。
+- 「录制任意按键」合并进「多步动作」，旧配置自动迁移，已配置的动作可反复点开编辑。
+- 日志 2 GB 自动轮转，保留一份上一份；「高级功能 → 日志」可手动立即轮转。
 
 ## 1.4.5 变更（本 Fork）
 

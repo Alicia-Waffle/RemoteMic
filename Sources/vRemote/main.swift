@@ -297,6 +297,16 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             AudioPipe.shared.setDoubaoRecording(recording)
         }
 
+        // 多步动作里的语音步骤：与物理触发键走同一条路径，
+        // 只观察豆包录音状态，不改动 AudioPipe 的收尾逻辑。
+        RemoteActionRunner.shared.doubaoIsRecording = { [weak self] in
+            self?.doubaoAudioState.snapshotNow().isRecording ?? false
+        }
+        RemoteActionRunner.shared.voiceTap = {
+            AudioPipe.shared.prewarmMacCapture(reason: "多步动作语音")
+            Key.triggerTap()
+        }
+
         DispatchQueue.main.async { [weak self] in
             self?.debugWindow.show()
         }
@@ -408,6 +418,14 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
         clearLogItem.target = self
         submenu.addItem(clearLogItem)
+
+        let rotateLogItem = NSMenuItem(
+            title: L10n.text("立即轮转日志", "Rotate logs now"),
+            action: #selector(rotateLogNow),
+            keyEquivalent: ""
+        )
+        rotateLogItem.target = self
+        submenu.addItem(rotateLogItem)
 
         submenu.addItem(.separator())
 
@@ -734,6 +752,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func clearLog() {
         Log.clear()
+        refreshSizeLabels()
+    }
+
+    @objc private func rotateLogNow() {
+        Log.rotateNow()
         refreshSizeLabels()
     }
 

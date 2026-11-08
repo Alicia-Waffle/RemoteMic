@@ -140,6 +140,8 @@ enum RemoteMappingTarget: String, CaseIterable, Identifiable, Codable, Hashable 
     case commandV
     case commandZ
     case custom
+    case insertText
+    case sequence
     case openApplication
 
     var id: String { rawValue }
@@ -174,6 +176,8 @@ enum RemoteMappingTarget: String, CaseIterable, Identifiable, Codable, Hashable 
         case .commandV: L10n.text("粘贴 (⌘V)", "Paste (⌘V)")
         case .commandZ: L10n.text("撤销 (⌘Z)", "Undo (⌘Z)")
         case .custom: L10n.text("录制任意按键…", "Record a key…")
+        case .insertText: L10n.text("输入固定文本…", "Insert fixed text…")
+        case .sequence: L10n.text("多步动作…", "Multi-step action…")
         case .openApplication: L10n.text("打开 App…", "Open App…")
         }
     }
@@ -391,13 +395,17 @@ final class RemoteMappingStore: ObservableObject {
     static let shared = RemoteMappingStore()
 
     @Published private(set) var revision = 0
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
     private let prefix = "remoteMapping."
     private let enabledPrefix = "remoteMappingEnabled."
     private let customPrefix = "remoteCustomMapping."
     private let appPrefix = "remoteAppMapping."
+    private let textPrefix = "remoteTextMapping."
+    private let sequencePrefix = "remoteSequenceMapping."
 
-    private init() {}
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
 
     func isEnabled(_ remote: SupportedRemoteID) -> Bool {
         defaults.bool(forKey: enabledPrefix + remote.rawValue)
@@ -429,8 +437,10 @@ final class RemoteMappingStore: ObservableObject {
         guard button.remappable else { return .disabled }
         let key = storageKey(prefix, button, remote, gesture)
         if let raw = defaults.string(forKey: key),
-           let target = RemoteMappingTarget(rawValue: raw) {
-            return target
+           let stored = RemoteMappingTarget(rawValue: raw) {
+            // 组合键与宏合并为一个「多步动作」入口：旧的「录制任意按键」
+            // 配置继续生效，但统一显示 / 存储为 .sequence。
+            return stored == .custom ? .sequence : stored
         }
         if gesture != .single {
             return .disabled
@@ -470,19 +480,6 @@ final class RemoteMappingStore: ObservableObject {
         return try? JSONDecoder().decode(RemoteCustomShortcut.self, from: data)
     }
 
-    func setCustomShortcut(
-        _ shortcut: RemoteCustomShortcut,
-        for button: RemoteButtonDefinition,
-        remote: SupportedRemoteID,
-        gesture: RemoteGesture = .single
-    ) {
-        let key = storageKey(customPrefix, button, remote, gesture)
-        if let data = try? JSONEncoder().encode(shortcut) {
-            defaults.set(data, forKey: key)
-            setTarget(.custom, for: button, remote: remote, gesture: gesture)
-        }
-    }
-
     func appLaunch(
         for button: RemoteButtonDefinition,
         remote: SupportedRemoteID,
@@ -514,6 +511,67 @@ final class RemoteMappingStore: ObservableObject {
         }
     }
 
+    func insertedText(
+        for button: RemoteButtonDefinition,
+        remote: SupportedRemoteID,
+        gesture: RemoteGesture = .single
+    ) -> String? {
+        defaults.string(forKey: storageKey(textPrefix, button, remote, gesture))
+    }
+
+    func setInsertedText(
+        _ text: String,
+        for button: RemoteButtonDefinition,
+        remote: SupportedRemoteID,
+        gesture: RemoteGesture = .single
+    ) {
+        defaults.set(
+            text,
+            forKey: storageKey(textPrefix, button, remote, gesture)
+        )
+        setTarget(.insertText, for: button, remote: remote, gesture: gesture)
+    }
+
+    /// 读取多步动作；旧的「录制任意按键」配置自动视为一步按键动作。
+    func sequence(
+        for button: RemoteButtonDefinition,
+        remote: SupportedRemoteID,
+        gesture: RemoteGesture = .single
+    ) -> RemoteActionSequence? {
+        let key = storageKey(sequencePrefix, button, remote, gesture)
+        if let data = defaults.data(forKey: key),
+           let sequence = try? JSONDecoder().decode(
+               RemoteActionSequence.self,
+               from: data
+           ) {
+            return sequence
+        }
+        if defaults.string(
+            forKey: storageKey(prefix, button, remote, gesture)
+        ) == RemoteMappingTarget.custom.rawValue,
+           let legacy = storedCustomShortcut(
+               for: button,
+               remote: remote,
+               gesture: gesture
+           ) {
+            return RemoteActionSequence(shortcut: legacy)
+        }
+        return nil
+    }
+
+    func setSequence(
+        _ sequence: RemoteActionSequence,
+        for button: RemoteButtonDefinition,
+        remote: SupportedRemoteID,
+        gesture: RemoteGesture = .single
+    ) {
+        let key = storageKey(sequencePrefix, button, remote, gesture)
+        if let data = try? JSONEncoder().encode(sequence) {
+            defaults.set(data, forKey: key)
+            setTarget(.sequence, for: button, remote: remote, gesture: gesture)
+        }
+    }
+
     func targetTitle(
         for button: RemoteButtonDefinition,
         remote: SupportedRemoteID,
@@ -524,6 +582,19 @@ final class RemoteMappingStore: ObservableObject {
         case .custom:
             return customShortcut(for: button, remote: remote, gesture: gesture)?.label
                 ?? value.title
+        case .insertText:
+            guard let text = insertedText(
+                for: button,
+                remote: remote,
+                gesture: gesture
+            ), !text.isEmpty else { return value.title }
+            return RemoteActionStep.textPreview(text)
+        case .sequence:
+            return sequence(
+                for: button,
+                remote: remote,
+                gesture: gesture
+            )?.summary ?? value.title
         case .openApplication:
             return appLaunch(for: button, remote: remote, gesture: gesture)?.label
                 ?? value.title
@@ -543,6 +614,25 @@ final class RemoteMappingStore: ObservableObject {
         case .custom:
             customShortcut(for: button, remote: remote, gesture: gesture)?
                 .post(isDown: isDown)
+        case .insertText:
+            guard isDown,
+                  let text = insertedText(
+                      for: button,
+                      remote: remote,
+                      gesture: gesture
+                  ),
+                  !text.isEmpty
+            else { return }
+            TextInjector.insert(text)
+        case .sequence:
+            guard isDown,
+                  let sequence = sequence(
+                      for: button,
+                      remote: remote,
+                      gesture: gesture
+                  )
+            else { return }
+            RemoteActionRunner.shared.run(sequence)
         case .openApplication:
             guard isDown,
                   let launch = appLaunch(
@@ -568,6 +658,12 @@ final class RemoteMappingStore: ObservableObject {
                 )
                 defaults.removeObject(
                     forKey: storageKey(appPrefix, button, remote, gesture)
+                )
+                defaults.removeObject(
+                    forKey: storageKey(textPrefix, button, remote, gesture)
+                )
+                defaults.removeObject(
+                    forKey: storageKey(sequencePrefix, button, remote, gesture)
                 )
             }
         }

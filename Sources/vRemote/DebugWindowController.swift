@@ -1252,11 +1252,28 @@ private struct DeviceSelectionRow: View {
 
 private struct MappingRow: View {
     @ObservedObject private var mappings = RemoteMappingStore.shared
-    @State private var showRecorder = false
-    @State private var recordingGesture: RemoteGesture = .single
+    @State private var editor: MappingEditor?
     let remote: SupportedRemoteID
     let button: RemoteButtonDefinition
     let enabled: Bool
+
+    private enum MappingEditor: Identifiable {
+        case insertText(RemoteGesture)
+        case sequence(RemoteGesture)
+
+        var id: String {
+            switch self {
+            case .insertText(let gesture): "insertText-\(gesture.rawValue)"
+            case .sequence(let gesture): "sequence-\(gesture.rawValue)"
+            }
+        }
+
+        var gesture: RemoteGesture {
+            switch self {
+            case .insertText(let gesture), .sequence(let gesture): gesture
+            }
+        }
+    }
 
     var body: some View {
         HStack(spacing: 6) {
@@ -1281,12 +1298,23 @@ private struct MappingRow: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 ForEach(RemoteGesture.allCases) { gesture in
-                    Picker(button.title, selection: targetBinding(for: gesture)) {
-                        ForEach(RemoteMappingTarget.allCases.filter { $0 != .doubaoVoice }) { target in
-                            Text(menuTitle(for: target, gesture: gesture)).tag(target)
+                    // 用 Menu 而不是 Picker：已配置的动作可以再次点开编辑，
+                    // 不会出现“选中同一项不再触发”的问题。
+                    Menu {
+                        ForEach(menuTargets) { target in
+                            Button(menuTitle(for: target, gesture: gesture)) {
+                                select(target, gesture: gesture)
+                            }
                         }
+                    } label: {
+                        // 箭头由 Menu 自带，不要再自己画一个。
+                        Text(currentTitle(for: gesture))
+                            .font(.system(size: 11))
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .contentShape(Rectangle())
                     }
-                    .labelsHidden()
+                    .menuStyle(.borderlessButton)
                     .controlSize(.small)
                     .frame(minWidth: 92, maxWidth: .infinity)
                 }
@@ -1297,60 +1325,103 @@ private struct MappingRow: View {
         .background(ConsoleTheme.surface2)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .accessibilityElement(children: .combine)
-        .sheet(isPresented: $showRecorder) {
-            KeyboardShortcutCaptureView(
-                buttonTitle: button.title,
-                onCancel: { showRecorder = false },
-                onSave: { shortcut in
-                    mappings.setCustomShortcut(
-                        shortcut,
+        .sheet(item: $editor) { editor in
+            switch editor {
+            case .insertText(let gesture):
+                InsertTextEditorView(
+                    buttonTitle: button.title,
+                    initial: mappings.insertedText(
                         for: button,
                         remote: remote,
-                        gesture: recordingGesture
-                    )
-                    showRecorder = false
-                }
+                        gesture: gesture
+                    ) ?? "",
+                    onCancel: { self.editor = nil },
+                    onSave: { text in
+                        mappings.setInsertedText(
+                            text,
+                            for: button,
+                            remote: remote,
+                            gesture: gesture
+                        )
+                        self.editor = nil
+                    }
+                )
+            case .sequence(let gesture):
+                SequenceEditorView(
+                    buttonTitle: button.title,
+                    initial: mappings.sequence(
+                        for: button,
+                        remote: remote,
+                        gesture: gesture
+                    ),
+                    onCancel: { self.editor = nil },
+                    onSave: { sequence in
+                        mappings.setSequence(
+                            sequence,
+                            for: button,
+                            remote: remote,
+                            gesture: gesture
+                        )
+                        self.editor = nil
+                    }
+                )
+            }
+        }
+    }
+
+    /// 「录制任意按键」已合并进「多步动作」，旧配置仍可按多步动作读取。
+    private var menuTargets: [RemoteMappingTarget] {
+        RemoteMappingTarget.allCases.filter {
+            $0 != .doubaoVoice && $0 != .custom
+        }
+    }
+
+    private func select(_ target: RemoteMappingTarget, gesture: RemoteGesture) {
+        switch target {
+        case .insertText:
+            editor = .insertText(gesture)
+        case .sequence:
+            editor = .sequence(gesture)
+        case .openApplication:
+            mappings.setTarget(
+                .openApplication,
+                for: button,
+                remote: remote,
+                gesture: gesture
+            )
+            chooseApplication(gesture: gesture)
+        default:
+            mappings.setTarget(
+                target,
+                for: button,
+                remote: remote,
+                gesture: gesture
             )
         }
     }
 
-    private func targetBinding(for gesture: RemoteGesture) -> Binding<RemoteMappingTarget> {
-        Binding(
-            get: { mappings.target(for: button, remote: remote, gesture: gesture) },
-            set: { target in
-                switch target {
-                case .custom:
-                    recordingGesture = gesture
-                    showRecorder = true
-                case .openApplication:
-                    mappings.setTarget(
-                        .openApplication,
-                        for: button,
-                        remote: remote,
-                        gesture: gesture
-                    )
-                    chooseApplication(gesture: gesture)
-                default:
-                    mappings.setTarget(
-                        target,
-                        for: button,
-                        remote: remote,
-                        gesture: gesture
-                    )
-                }
-            }
+    private func currentTitle(for gesture: RemoteGesture) -> String {
+        menuTitle(
+            for: mappings.target(for: button, remote: remote, gesture: gesture),
+            gesture: gesture
         )
     }
 
-    /// 自定义组合键与「打开 App」在菜单里显示已配置的名称，其余用固定标题。
+    /// 已配置的动作在菜单里显示名称，其余用固定标题。
     private func menuTitle(for target: RemoteMappingTarget, gesture: RemoteGesture) -> String {
         switch target {
-        case .custom:
-            return mappings.customShortcut(
+        case .insertText:
+            return mappings.insertedText(
                 for: button,
                 remote: remote,
                 gesture: gesture
-            )?.label ?? target.title
+            ).map(RemoteActionStep.textPreview) ?? target.title
+        case .sequence:
+            return mappings.sequence(
+                for: button,
+                remote: remote,
+                gesture: gesture
+            )?.summary ?? target.title
         case .openApplication:
             return mappings.appLaunch(
                 for: button,
@@ -1363,23 +1434,9 @@ private struct MappingRow: View {
     }
 
     private func chooseApplication(gesture: RemoteGesture) {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.application]
-        panel.directoryURL = URL(fileURLWithPath: "/Applications")
-        panel.canChooseDirectories = false
-        panel.canChooseFiles = true
-        panel.allowsMultipleSelection = false
-        guard panel.runModal() == .OK,
-              let url = panel.url,
-              let bundle = Bundle(url: url),
-              let bundleID = bundle.bundleIdentifier
-        else { return }
-        let info = bundle.localizedInfoDictionary ?? bundle.infoDictionary
-        let label = info?["CFBundleDisplayName"] as? String
-            ?? info?["CFBundleName"] as? String
-            ?? url.deletingPathExtension().lastPathComponent
+        guard let launch = pickApplicationWithPanel() else { return }
         mappings.setAppLaunch(
-            RemoteAppLaunch(bundleID: bundleID, label: label),
+            launch,
             for: button,
             remote: remote,
             gesture: gesture
@@ -1387,42 +1444,337 @@ private struct MappingRow: View {
     }
 }
 
-private struct KeyboardShortcutCaptureView: View {
+private func pickApplicationWithPanel() -> RemoteAppLaunch? {
+    let panel = NSOpenPanel()
+    panel.allowedContentTypes = [.application]
+    panel.directoryURL = URL(fileURLWithPath: "/Applications")
+    panel.canChooseDirectories = false
+    panel.canChooseFiles = true
+    panel.allowsMultipleSelection = false
+    guard panel.runModal() == .OK,
+          let url = panel.url,
+          let bundle = Bundle(url: url),
+          let bundleID = bundle.bundleIdentifier
+    else { return nil }
+    let info = bundle.localizedInfoDictionary ?? bundle.infoDictionary
+    let label = info?["CFBundleDisplayName"] as? String
+        ?? info?["CFBundleName"] as? String
+        ?? url.deletingPathExtension().lastPathComponent
+    return RemoteAppLaunch(bundleID: bundleID, label: label)
+}
+
+private struct InsertTextEditorView: View {
     let buttonTitle: String
+    @State private var text: String
     let onCancel: () -> Void
-    let onSave: (RemoteCustomShortcut) -> Void
-    @State private var captured: RemoteCustomShortcut?
+    let onSave: (String) -> Void
+
+    init(
+        buttonTitle: String,
+        initial: String,
+        onCancel: @escaping () -> Void,
+        onSave: @escaping (String) -> Void
+    ) {
+        self.buttonTitle = buttonTitle
+        self.onCancel = onCancel
+        self.onSave = onSave
+        _text = State(initialValue: initial)
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 5) {
-                Text(L10n.text("录制键盘按键", "Record Keyboard Key"))
+                Text(L10n.text("输入固定文本", "Insert Fixed Text"))
                     .font(.system(size: 20, weight: .semibold))
                 Text(L10n.text(
-                    "为“\(buttonTitle)”按下一个按键或组合键。",
-                    "Press a key or shortcut for “\(buttonTitle)”."
+                    "按下“\(buttonTitle)”时，把这段文字粘贴到当前输入框；剪贴板会在 0.3 秒后还原。",
+                    "Pressing “\(buttonTitle)” pastes this text into the focused field. The clipboard is restored after 0.3 s."
                 ))
-                    .font(.system(size: 13))
+                    .font(.system(size: 12))
                     .foregroundStyle(ConsoleTheme.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
+            TextEditor(text: $text)
+                .font(.system(size: 13))
+                .padding(8)
+                .frame(height: 150)
+                .background(ConsoleTheme.black.opacity(0.35))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 11)
+                        .stroke(ConsoleTheme.lineSoft, lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 11))
+
+            HStack {
+                Button(L10n.text("取消", "Cancel"), action: onCancel)
+                Spacer()
+                Button(L10n.text("保存映射", "Save Mapping")) {
+                    onSave(text)
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(
+                    text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                )
+            }
+        }
+        .padding(24)
+        .frame(width: 470, height: 360)
+        .background(ConsoleTheme.panel)
+        .foregroundStyle(ConsoleTheme.text)
+    }
+}
+
+private struct SequenceEditorView: View {
+    let buttonTitle: String
+    let onCancel: () -> Void
+    let onSave: (RemoteActionSequence) -> Void
+
+    @State private var steps: [RemoteActionStep]
+    @State private var editingStage: EditStage?
+
+    private enum EditStage: Equatable {
+        case shortcut(Int)
+        case text(Int)
+    }
+
+    init(
+        buttonTitle: String,
+        initial: RemoteActionSequence?,
+        onCancel: @escaping () -> Void,
+        onSave: @escaping (RemoteActionSequence) -> Void
+    ) {
+        self.buttonTitle = buttonTitle
+        self.onCancel = onCancel
+        self.onSave = onSave
+        _steps = State(initialValue: initial?.steps ?? [])
+        _editingStage = State(initialValue: nil)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(L10n.text("多步动作", "Multi-step Action"))
+                    .font(.system(size: 20, weight: .semibold))
+                Text(L10n.text(
+                    "为“\(buttonTitle)”按顺序执行以下步骤；只放一个按键步骤时，就是普通组合键。",
+                    "Run these steps in order for “\(buttonTitle)”. A single key step is just a normal shortcut."
+                ))
+                    .font(.system(size: 12))
+                    .foregroundStyle(ConsoleTheme.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let editingStage {
+                switch editingStage {
+                case .shortcut(let index):
+                    recorderPanel(for: index)
+                case .text(let index):
+                    textStepPanel(for: index)
+                }
+            } else {
+                stepsPanel
+                addStepMenu
+            }
+
+            Spacer(minLength: 0)
+
+            HStack {
+                Button(L10n.text("取消", "Cancel"), action: onCancel)
+                Spacer()
+                Button(L10n.text("保存映射", "Save Mapping")) {
+                    onSave(RemoteActionSequence(steps: steps))
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!canSave || editingStage != nil)
+            }
+        }
+        .padding(24)
+        .frame(width: 580, height: 560)
+        .background(ConsoleTheme.panel)
+        .foregroundStyle(ConsoleTheme.text)
+    }
+
+    private var stepsPanel: some View {
+        ScrollView {
+            LazyVStack(spacing: 8) {
+                if steps.isEmpty {
+                    Text(L10n.text(
+                        "还没有步骤。点下方「添加步骤」开始。",
+                        "No steps yet. Use “Add step” below."
+                    ))
+                        .font(.system(size: 12))
+                        .foregroundStyle(ConsoleTheme.tertiary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 18)
+                        .padding(.horizontal, 12)
+                }
+                ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
+                    stepRow(index: index, step: step)
+                }
+            }
+            .padding(.vertical, 2)
+        }
+        .frame(minHeight: 300, maxHeight: 340)
+    }
+
+    private func stepRow(index: Int, step: RemoteActionStep) -> some View {
+        HStack(spacing: 8) {
+            Text("\(index + 1)")
+                .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
+                .foregroundStyle(ConsoleTheme.tertiary)
+                .frame(width: 18)
+            Image(systemName: step.kind.symbol)
+                .font(.system(size: 11))
+                .foregroundStyle(ConsoleTheme.green)
+                .frame(width: 16)
+
+            stepContent(index: index, step: step)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button {
+                switch step.kind {
+                case .shortcut: editingStage = .shortcut(index)
+                case .insertText: editingStage = .text(index)
+                default: break
+                }
+            } label: {
+                Image(systemName: step.kind == .shortcut ? "record.circle" : "pencil")
+                    .font(.system(size: 11))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(ConsoleTheme.secondary)
+            .help(L10n.text("编辑这一步", "Edit this step"))
+            .opacity(step.kind == .shortcut || step.kind == .insertText ? 1 : 0)
+            .disabled(step.kind != .shortcut && step.kind != .insertText)
+
+            Button {
+                moveStep(from: index, offset: -1)
+            } label: {
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 10))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(ConsoleTheme.secondary)
+            .disabled(index == 0)
+
+            Button {
+                moveStep(from: index, offset: 1)
+            } label: {
+                Image(systemName: "arrow.down")
+                    .font(.system(size: 10))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(ConsoleTheme.secondary)
+            .disabled(index == steps.count - 1)
+
+            Button {
+                removeStep(at: index)
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 10))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(ConsoleTheme.tertiary)
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 36)
+        .background(ConsoleTheme.surface2)
+        .clipShape(RoundedRectangle(cornerRadius: 9))
+    }
+
+    @ViewBuilder
+    private func stepContent(index: Int, step: RemoteActionStep) -> some View {
+        switch step {
+        case .shortcut(let shortcut):
+            Text(shortcut.label)
+                .font(.system(size: 12, weight: .medium))
+        case .insertText(let text):
+            Text(RemoteActionStep.textPreview(text))
+                .font(.system(size: 12, weight: .medium))
+                .lineLimit(1)
+        case .openApplication(let app):
+            HStack(spacing: 6) {
+                Text(app.label)
+                    .font(.system(size: 12, weight: .medium))
+                Button(L10n.text("更换…", "Change…")) {
+                    guard let launch = pickApplicationWithPanel() else { return }
+                    replaceStep(at: index, with: .openApplication(launch))
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 10.5))
+                .foregroundStyle(ConsoleTheme.green)
+            }
+        case .focusInput, .voice:
+            Text(step.summary)
+                .font(.system(size: 12, weight: .medium))
+        case .wait:
+            HStack(spacing: 8) {
+                Stepper(
+                    value: waitBinding(index),
+                    in: 0.1...10,
+                    step: 0.1
+                ) {
+                    Text(L10n.text(
+                        "等待 \(RemoteActionStep.secondsText(Int((waitValue(index) * 1000).rounded())))",
+                        "Wait \(RemoteActionStep.secondsText(Int((waitValue(index) * 1000).rounded())))"
+                    ))
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .controlSize(.small)
+            }
+        }
+    }
+
+    private var addStepMenu: some View {
+        HStack(spacing: 8) {
+            Menu {
+                ForEach(RemoteActionStep.Kind.allCases, id: \.self) { kind in
+                    Button(kind.title) { addStep(kind) }
+                }
+            } label: {
+                Label(
+                    L10n.text("添加步骤", "Add step"),
+                    systemImage: "plus.circle.fill"
+                )
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .menuStyle(.borderlessButton)
+            .frame(width: 140)
+            Text(L10n.text(
+                "步骤间隔 80 ms；语音步骤会等豆包停止录音后继续。",
+                "80 ms between steps; the voice step waits for Doubao to stop recording."
+            ))
+                .font(.system(size: 10.5))
+                .foregroundStyle(ConsoleTheme.tertiary)
+        }
+    }
+
+    private func recorderPanel(for index: Int) -> some View {
+        VStack(spacing: 12) {
+            Text(L10n.text(
+                "为第 \(index + 1) 步录制按键",
+                "Record a key for step \(index + 1)"
+            ))
+                .font(.system(size: 13, weight: .semibold))
+
             KeyboardEventCaptureView { shortcut in
-                captured = shortcut
+                guard steps.indices.contains(index) else { return }
+                steps[index] = .shortcut(shortcut)
             }
             .frame(height: 82)
             .overlay(
                 RoundedRectangle(cornerRadius: 13)
-                    .stroke(
-                        captured == nil ? ConsoleTheme.line : ConsoleTheme.green,
-                        lineWidth: 1.5
-                    )
+                    .stroke(ConsoleTheme.green, lineWidth: 1.5)
             )
             .overlay {
                 VStack(spacing: 5) {
-                    Text(captured?.label ?? L10n.text("现在按下键盘按键", "Press a key now"))
+                    Text(shortcutLabel(at: index))
                         .font(.system(size: 18, weight: .semibold, design: .rounded))
-                        .foregroundStyle(captured == nil ? ConsoleTheme.secondary : ConsoleTheme.text)
-                    Text(L10n.text("支持 Command / Option / Control / Shift 组合", "Command / Option / Control / Shift are supported"))
+                    Text(L10n.text(
+                        "支持 Command / Option / Control / Shift 组合",
+                        "Command / Option / Control / Shift are supported"
+                    ))
                         .font(.system(size: 10.5))
                         .foregroundStyle(ConsoleTheme.tertiary)
                 }
@@ -1430,19 +1782,141 @@ private struct KeyboardShortcutCaptureView: View {
             }
 
             HStack {
-                Button(L10n.text("取消", "Cancel"), action: onCancel)
                 Spacer()
-                Button(L10n.text("保存映射", "Save Mapping")) {
-                    if let captured { onSave(captured) }
+                Button(L10n.text("完成录制", "Done")) {
+                    editingStage = nil
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(captured == nil)
             }
         }
-        .padding(24)
-        .frame(width: 430, height: 245)
-        .background(ConsoleTheme.panel)
-        .foregroundStyle(ConsoleTheme.text)
+        .padding(12)
+        .frame(height: 200)
+    }
+
+    private func textStepPanel(for index: Int) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(L10n.text(
+                "第 \(index + 1) 步：要输入的文本",
+                "Step \(index + 1): text to insert"
+            ))
+                .font(.system(size: 13, weight: .semibold))
+
+            TextEditor(text: stepTextBinding(index))
+                .font(.system(size: 13))
+                .padding(8)
+                .frame(height: 190)
+                .background(ConsoleTheme.black.opacity(0.35))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 11)
+                        .stroke(ConsoleTheme.lineSoft, lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 11))
+
+            HStack {
+                Spacer()
+                Button(L10n.text("完成", "Done")) {
+                    editingStage = nil
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(12)
+        .frame(height: 270)
+    }
+
+    private func shortcutLabel(at index: Int) -> String {
+        guard steps.indices.contains(index),
+              case .shortcut(let shortcut) = steps[index] else {
+            return L10n.text("现在按下键盘按键", "Press a key now")
+        }
+        return shortcut.label
+    }
+
+    private func addStep(_ kind: RemoteActionStep.Kind) {
+        switch kind {
+        case .shortcut:
+            steps.append(.shortcut(
+                RemoteCustomShortcut(keyCode: 0x24, flags: 0, label: "Return")
+            ))
+            editingStage = .shortcut(steps.count - 1)
+        case .insertText:
+            steps.append(.insertText(""))
+            editingStage = .text(steps.count - 1)
+        case .openApplication:
+            guard let launch = pickApplicationWithPanel() else { return }
+            steps.append(.openApplication(launch))
+        case .focusInput:
+            steps.append(.focusInput)
+        case .wait:
+            steps.append(.wait(500))
+        case .voice:
+            steps.append(.voice)
+        }
+    }
+
+    private func removeStep(at index: Int) {
+        guard steps.indices.contains(index) else { return }
+        steps.remove(at: index)
+        if let stage = editingStage {
+            switch stage {
+            case .shortcut(let editingIndex) where editingIndex >= steps.count:
+                editingStage = nil
+            case .text(let editingIndex) where editingIndex >= steps.count:
+                editingStage = nil
+            default:
+                break
+            }
+        }
+    }
+
+    private func moveStep(from index: Int, offset: Int) {
+        let target = index + offset
+        guard steps.indices.contains(index),
+              steps.indices.contains(target) else { return }
+        steps.swapAt(index, target)
+    }
+
+    private func replaceStep(at index: Int, with step: RemoteActionStep) {
+        guard steps.indices.contains(index) else { return }
+        steps[index] = step
+    }
+
+    private func waitValue(_ index: Int) -> Double {
+        guard steps.indices.contains(index),
+              case .wait(let milliseconds) = steps[index] else { return 0.5 }
+        return Double(milliseconds) / 1000
+    }
+
+    private func waitBinding(_ index: Int) -> Binding<Double> {
+        Binding(
+            get: { waitValue(index) },
+            set: { newValue in
+                guard steps.indices.contains(index) else { return }
+                steps[index] = .wait(Int((newValue * 1000).rounded()))
+            }
+        )
+    }
+
+    private var canSave: Bool {
+        guard !steps.isEmpty else { return false }
+        return steps.allSatisfy { step in
+            guard case .insertText(let text) = step else { return true }
+            return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+
+    private func stepTextBinding(_ index: Int) -> Binding<String> {
+        Binding(
+            get: {
+                guard steps.indices.contains(index),
+                      case .insertText(let text) = steps[index] else { return "" }
+                return text
+            },
+            set: { newValue in
+                guard steps.indices.contains(index) else { return }
+                steps[index] = .insertText(newValue)
+            }
+        )
     }
 }
 
