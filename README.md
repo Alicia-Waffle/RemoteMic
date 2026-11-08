@@ -3,7 +3,7 @@
 > 本仓库是 [VincentKingHsu/vRemoter](https://github.com/VincentKingHsu/vRemoter) 的 Fork，由 TheShadow178 维护；本 Fork 的产品名为 **RemoteMic**。
 > 原仓库保存 vRemoter 的源码、设计源稿、构建脚本与测试；本 Fork 修掉了 macOS 26 上 Chromecast 遥控器按键映射失效的问题，并移除了遥测依赖。
 
-[原项目](https://github.com/VincentKingHsu/vRemoter) · [原项目官网](https://vremoter.vincentstudio.org/) · 本 Fork 版本：`1.3.0`
+[原项目](https://github.com/VincentKingHsu/vRemoter) · [原项目官网](https://vremoter.vincentstudio.org/) · 本 Fork 版本：`1.4.3`
 
 ## 这个 Fork 修了什么
 
