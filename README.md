@@ -159,8 +159,8 @@ RemoteMic 免费提供。制作不易，麻烦打个赏补偿一点我的 Token 
 |---|---|---|
 | APP、驱动构建、测试与设计 | 本 GitHub 仓库 | 是 |
 | 官网静态源文件 | `docs/` | 是，部署结果见官网 |
-| 官网 | [vremoter.vincentstudio.org](https://vremoter.vincentstudio.org/) | 是 |
-| 更新、PKG/DMG、购买配置 | [updates.vincentstudio.org/vremoter](https://updates.vincentstudio.org/vremoter/) | 是 |
+| 官网 | 本仓库 `docs/` 静态站（GitHub Pages） | 是 |
+| 更新、PKG/DMG | [github.com/TheShadow178/RemoteMic/releases](https://github.com/TheShadow178/RemoteMic/releases) | 是 |
 | 原始宣传视频与市场素材 | 仓库外 `../marketing/` | 否，不上传 Git |
 
 遥控器相关 GitHub 仓库：
