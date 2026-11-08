@@ -1,6 +1,6 @@
-# vRemoter（Chromecast 按键修复分支）
+# RemoteMic（vRemoter Fork）
 
-> 本仓库是 [VincentKingHsu/vRemoter](https://github.com/VincentKingHsu/vRemoter) 的 Fork，由 TheShadow178 维护。
+> 本仓库是 [VincentKingHsu/vRemoter](https://github.com/VincentKingHsu/vRemoter) 的 Fork，由 TheShadow178 维护；本 Fork 的产品名为 **RemoteMic**。
 > 原仓库保存 vRemoter 的源码、设计源稿、构建脚本与测试；本 Fork 修掉了 macOS 26 上 Chromecast 遥控器按键映射失效的问题，并移除了遥测依赖。
 
 [原项目](https://github.com/VincentKingHsu/vRemoter) · [原项目官网](https://vremoter.vincentstudio.org/) · 本 Fork 版本：`1.3.0`
@@ -27,7 +27,7 @@ Chromecast 遥控器的 HID collection 属于 keyboard 类。非特权进程用 
 
 本 Fork 的做法：
 
-- 新增最小化的 root 守护进程 `vRemoteHIDHelper`（`Sources/vRemoteHIDHelper`），由 launchd 以 root 常驻；
+- 新增最小化的 root 守护进程 `RemoteMicHIDHelper`（`Sources/RemoteMicHIDHelper`），由 launchd 以 root 常驻；
 - 它独占（seize）`VID 0x18D1 / PID 0x9450` 的 HID collection，解析按键报告，通过 XPC 只把「按键 usage + 按下/松开」回传给 App；
 - App 侧新增 `ChromecastHIDHelperClient`，启动时探测 helper；helper 不在就退回原来的进程内模式并打印原因，不会静默失效；
 - helper 校验连接方进程的代码签名 identifier（`local.simaqingfeng.vRemote`），其他进程无法订阅按键；
@@ -42,7 +42,7 @@ Chromecast 遥控器的 HID collection 属于 keyboard 类。非特权进程用 
 ## 安装
 
 ```bash
-./package-app.sh          # 编译 App + helper，生成 dist/build/vRemote.app
+./package-app.sh          # 编译 App + helper，生成 dist/build/RemoteMic.app
 ./install-app.sh          # 复制到 ~/Applications
 sudo ./install-helper.sh  # 安装 root helper（launchd + /Library/PrivilegedHelperTools）
 ```
@@ -67,7 +67,7 @@ sudo ./uninstall-helper.sh
 
 ## 产品定位
 
-vRemoter 把蓝牙语音遥控器变成 macOS 上的 Vibe Coding 控制器：遥控器语音键控制豆包输入法，遥控器麦克风与 MacBook 麦克风混合为同一个 CoreAudio 输入设备 `vRemoteDr 2ch`。
+RemoteMic 把蓝牙语音遥控器变成 macOS 上的 Vibe Coding 控制器：遥控器语音键控制豆包输入法，遥控器麦克风与 MacBook 麦克风混合为同一个 CoreAudio 输入设备 `RemoteMic 2ch`。
 
 已接入的遥控器：
 
@@ -76,7 +76,12 @@ vRemoter 把蓝牙语音遥控器变成 macOS 上的 Vibe Coding 控制器：遥
 
 Chromecast Remote 已实现语音键双模式：短按第一次打开、第二次关闭；长按时持续录音，松手自动关闭。APP 还提供按型号保存的按键映射，可把方向、确认、返回、Home、YouTube、Netflix、信源、音量等按键改为常用 macOS 操作。
 
-当前版本：`1.4.0`（本 Fork）
+当前版本：`1.4.1`（本 Fork）
+
+## 1.4.1 变更（本 Fork）
+
+- 修复虚拟设备 IOProc 常驻导致的「麦克风一直占用」：`RemoteMic 2ch` 改为**按需启动、空闲释放**，App 开着但没人录音时不再出现在 macOS 麦克风使用指示里。
+- 修复状态栏图标四角白色方块：图标源文件圆角外侧改为真正的透明像素（抗锯齿边缘取内侧颜色），菜单栏、程序坞与系统面板图标一致。
 
 ## 1.4.0 变更（本 Fork）
 
@@ -95,7 +100,7 @@ Chromecast Remote 已实现语音键双模式：短按第一次打开、第二�
 
 - 音频输入改为「遥控器优先」：遥控器有音频流时只输出遥控器麦，不再与本地麦等权叠加。
 - 遥控器断开或没有音频流时自动回退本地麦克风，虚拟设备不会输出静音，会议软件等其它 App 不会因此失声。
-- 本地麦克风不再只认「内置麦」，按「内置麦 → 任意非虚拟输入设备」选择，并排除 vRemoteDr / MiRemoteV / BlackHole / Parrot 等回环设备。
+- 本地麦克风不再只认「内置麦」，按「内置麦 → 任意非虚拟输入设备」选择，并排除 RemoteMic 2ch / MiRemoteV / BlackHole / Parrot 等回环设备。
 - 遥控器优先期间本地麦只保留最近 0.25 秒缓冲，回退接近实时。
 
 ## 1.2.0 修复（本 Fork）
@@ -103,7 +108,7 @@ Chromecast Remote 已实现语音键双模式：短按第一次打开、第二�
 - 修复 macOS 26 上 Chromecast 遥控器按键映射全部失效的问题：新增 root HID helper 完成 seize，App 与 helper 之间通过 XPC 通信。
 - helper 缺失或 seize 失败时明确打印 `0xE00002C1` 原因并降级，不再静默失效。
 - 移除 TelemetryDeck 遥测依赖；App 不再上报事件，构建完全离线。
-- 新增 `install-helper.sh` / `uninstall-helper.sh`；打包脚本会把 helper 放进 `vRemote.app/Contents/Helpers/`。
+- 新增 `install-helper.sh` / `uninstall-helper.sh`；打包脚本会把 helper 放进 `RemoteMic.app/Contents/Helpers/`。
 
 ## 1.1.1 修复
 
@@ -157,9 +162,9 @@ vRemoter 免费提供。制作不易，麻烦打个赏补偿一点我的 Token �
 ## 目录
 
 - `Sources/vRemote/`：APP 主程序、BLE/ATVV、双麦混音、UI、更新与购买配置。
-- `Sources/vRemoteHIDHelper/`：本 Fork 新增的 root HID helper（按键独占与 XPC 回传）。
+- `Sources/RemoteMicHIDHelper/`：本 Fork 新增的 root HID helper（按键独占与 XPC 回传）。
 - `Sources/HIDHelperShared/`：APP 与 helper 共用的 XPC 协议与常量。
-- `Driver/`：生成 `vRemoteDriver.driver` 的实验性构建脚本。
+- `Driver/`：生成 `RemoteMicDriver.driver` 的实验性构建脚本。
 - `Packaging/`：APP 元数据、本地化与 PKG 安装脚本。
 - `Resources/`：APP 内置权限向导、商业入口与支持开发图片。
 - `SelfTests/`：硬件协议与更新配置回归数据。

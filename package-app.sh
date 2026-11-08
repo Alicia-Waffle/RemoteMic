@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="${0:A:h}"
-APP="$SCRIPT_DIR/dist/build/vRemote.app"
+APP="$SCRIPT_DIR/dist/build/RemoteMic.app"
 CONTENTS="$APP/Contents"
 
 cd "$SCRIPT_DIR"
@@ -12,9 +12,9 @@ rm -rf "$APP"
 mkdir -p "$CONTENTS/MacOS"
 mkdir -p "$CONTENTS/Helpers"
 mkdir -p "$CONTENTS/Resources"
-cp "$SCRIPT_DIR/.build/release/vRemote" "$CONTENTS/MacOS/vRemote"
-cp "$SCRIPT_DIR/.build/release/vRemoteHIDHelper" \
-  "$CONTENTS/Helpers/vRemoteHIDHelper"
+cp "$SCRIPT_DIR/.build/release/vRemote" "$CONTENTS/MacOS/RemoteMic"
+cp "$SCRIPT_DIR/.build/release/RemoteMicHIDHelper" \
+  "$CONTENTS/Helpers/RemoteMicHIDHelper"
 cp "$SCRIPT_DIR/Packaging/Info.plist" "$CONTENTS/Info.plist"
 for resource_bundle in "$SCRIPT_DIR/.build/release/"*.bundle(N); do
   [[ -d "$resource_bundle" ]] || continue
@@ -24,24 +24,24 @@ for localization in "$SCRIPT_DIR/Packaging"/*.lproj; do
   [[ -d "$localization" ]] || continue
   ditto "$localization" "$CONTENTS/Resources/${localization:t}"
 done
-LOGO="$SCRIPT_DIR/Design/vRemoter-Logo-v1/vRemoter-app-icon-v9.png"
+LOGO="$SCRIPT_DIR/Design/RemoteMic-Logo-v1/RemoteMic-app-icon-v1.png"
 if [[ -f "$LOGO" ]]; then
-  cp "$LOGO" "$CONTENTS/Resources/vRemoterLogo.png"
+  cp "$LOGO" "$CONTENTS/Resources/RemoteMicLogo.png"
 
-  ICONSET="$SCRIPT_DIR/dist/vRemoter.iconset"
+  ICONSET="$SCRIPT_DIR/dist/RemoteMic.iconset"
   rm -rf "$ICONSET"
   mkdir -p "$ICONSET"
-  sips -z 16 16 "$CONTENTS/Resources/vRemoterLogo.png" --out "$ICONSET/icon_16x16.png" >/dev/null
-  sips -z 32 32 "$CONTENTS/Resources/vRemoterLogo.png" --out "$ICONSET/icon_16x16@2x.png" >/dev/null
-  sips -z 32 32 "$CONTENTS/Resources/vRemoterLogo.png" --out "$ICONSET/icon_32x32.png" >/dev/null
-  sips -z 64 64 "$CONTENTS/Resources/vRemoterLogo.png" --out "$ICONSET/icon_32x32@2x.png" >/dev/null
-  sips -z 128 128 "$CONTENTS/Resources/vRemoterLogo.png" --out "$ICONSET/icon_128x128.png" >/dev/null
-  sips -z 256 256 "$CONTENTS/Resources/vRemoterLogo.png" --out "$ICONSET/icon_128x128@2x.png" >/dev/null
-  sips -z 256 256 "$CONTENTS/Resources/vRemoterLogo.png" --out "$ICONSET/icon_256x256.png" >/dev/null
-  sips -z 512 512 "$CONTENTS/Resources/vRemoterLogo.png" --out "$ICONSET/icon_256x256@2x.png" >/dev/null
-  sips -z 512 512 "$CONTENTS/Resources/vRemoterLogo.png" --out "$ICONSET/icon_512x512.png" >/dev/null
-  cp "$CONTENTS/Resources/vRemoterLogo.png" "$ICONSET/icon_512x512@2x.png"
-  iconutil -c icns "$ICONSET" -o "$CONTENTS/Resources/vRemoter.icns"
+  sips -z 16 16 "$CONTENTS/Resources/RemoteMicLogo.png" --out "$ICONSET/icon_16x16.png" >/dev/null
+  sips -z 32 32 "$CONTENTS/Resources/RemoteMicLogo.png" --out "$ICONSET/icon_16x16@2x.png" >/dev/null
+  sips -z 32 32 "$CONTENTS/Resources/RemoteMicLogo.png" --out "$ICONSET/icon_32x32.png" >/dev/null
+  sips -z 64 64 "$CONTENTS/Resources/RemoteMicLogo.png" --out "$ICONSET/icon_32x32@2x.png" >/dev/null
+  sips -z 128 128 "$CONTENTS/Resources/RemoteMicLogo.png" --out "$ICONSET/icon_128x128.png" >/dev/null
+  sips -z 256 256 "$CONTENTS/Resources/RemoteMicLogo.png" --out "$ICONSET/icon_128x128@2x.png" >/dev/null
+  sips -z 256 256 "$CONTENTS/Resources/RemoteMicLogo.png" --out "$ICONSET/icon_256x256.png" >/dev/null
+  sips -z 512 512 "$CONTENTS/Resources/RemoteMicLogo.png" --out "$ICONSET/icon_256x256@2x.png" >/dev/null
+  sips -z 512 512 "$CONTENTS/Resources/RemoteMicLogo.png" --out "$ICONSET/icon_512x512.png" >/dev/null
+  cp "$CONTENTS/Resources/RemoteMicLogo.png" "$ICONSET/icon_512x512@2x.png"
+  iconutil -c icns "$ICONSET" -o "$CONTENTS/Resources/RemoteMic.icns"
   rm -rf "$ICONSET"
 else
   print -u2 "Warning: $LOGO not found; skipping app icon."
@@ -64,20 +64,20 @@ if [[ -d "$SCRIPT_DIR/Resources/RemoteImages" ]]; then
   ditto "$SCRIPT_DIR/Resources/RemoteImages" \
     "$CONTENTS/Resources/RemoteImages"
 fi
-DRIVER="$SCRIPT_DIR/Driver/build/vRemoteDriver.driver"
+DRIVER="$SCRIPT_DIR/Driver/build/RemoteMicDriver.driver"
 if [[ -d "$DRIVER" ]]; then
   mkdir -p "$CONTENTS/Resources/Driver"
-  ditto "$DRIVER" "$CONTENTS/Resources/Driver/vRemoteDriver.driver"
+  ditto "$DRIVER" "$CONTENTS/Resources/Driver/RemoteMicDriver.driver"
 else
   print -u2 "Warning: $DRIVER not found; bundle will not include the audio driver."
 fi
-for script in install.sh uninstall.sh install-helper.sh uninstall-helper.sh "Install vRemote.command"; do
+for script in install.sh uninstall.sh install-helper.sh uninstall-helper.sh "Install RemoteMic.command"; do
   [[ -f "$SCRIPT_DIR/$script" ]] || continue
   cp "$SCRIPT_DIR/$script" "$SCRIPT_DIR/dist/build/$script"
 done
-chmod 755 "$SCRIPT_DIR/dist/build/install.sh" "$SCRIPT_DIR/dist/build/Install vRemote.command" 2>/dev/null || true
-chmod 755 "$CONTENTS/MacOS/vRemote"
-chmod 755 "$CONTENTS/Helpers/vRemoteHIDHelper"
+chmod 755 "$SCRIPT_DIR/dist/build/install.sh" "$SCRIPT_DIR/dist/build/Install RemoteMic.command" 2>/dev/null || true
+chmod 755 "$CONTENTS/MacOS/RemoteMic"
+chmod 755 "$CONTENTS/Helpers/RemoteMicHIDHelper"
 # SwiftPM resource bundles may contain read-only privacy manifests. The app
 # bundle is a disposable build artifact, so make it owner-writable before
 # clearing inherited metadata and applying the final ad-hoc signature.
@@ -90,8 +90,8 @@ codesign \
   --force \
   --sign - \
   --timestamp=none \
-  --identifier "local.simaqingfeng.vRemote.hidhelper" \
-  "$CONTENTS/Helpers/vRemoteHIDHelper"
+  --identifier "local.simaqingfeng.RemoteMic.hidhelper" \
+  "$CONTENTS/Helpers/RemoteMicHIDHelper"
 
 # Give the ad-hoc build a stable designated requirement. Without this,
 # codesign falls back to a CDHash-only requirement, so every rebuild looks
@@ -103,6 +103,6 @@ codesign \
   --requirements '=designated => identifier "local.simaqingfeng.vRemote"' \
   "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"
-codesign --verify --strict --verbose=2 "$CONTENTS/Helpers/vRemoteHIDHelper"
+codesign --verify --strict --verbose=2 "$CONTENTS/Helpers/RemoteMicHIDHelper"
 print "Built: $APP"
 print "Next: sudo ./install-helper.sh  (enables Chromecast button remapping)"

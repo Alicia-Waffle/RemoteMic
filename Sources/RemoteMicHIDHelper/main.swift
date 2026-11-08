@@ -4,8 +4,8 @@ import IOKit.hid
 import Security
 
 private func helperLog(_ message: String) {
-    NSLog("[vRemoteHIDHelper] %@", message)
-    FileHandle.standardError.write(Data(("[vRemoteHIDHelper] " + message + "\n").utf8))
+    NSLog("[RemoteMicHIDHelper] %@", message)
+    FileHandle.standardError.write(Data(("[RemoteMicHIDHelper] " + message + "\n").utf8))
 }
 
 private func deviceMatchedCallback(

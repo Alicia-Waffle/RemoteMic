@@ -32,7 +32,7 @@ final class DoubaoAudioStateMonitor {
     }
 
     private static let targetBundleID = "com.bytedance.inputmethod.doubaoime"
-    private static let targetDeviceName = "vRemoteDr 2ch"
+    private static let targetDeviceName = "RemoteMic 2ch"
 
     private var started = false
     private var processObjectID = AudioObjectID(kAudioObjectUnknown)

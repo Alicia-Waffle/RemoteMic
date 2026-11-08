@@ -5,17 +5,17 @@ SCRIPT_DIR="${0:A:h}"
 PLIST="$SCRIPT_DIR/Packaging/Info.plist"
 VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST")
 STAGING="$SCRIPT_DIR/dist/dmg-root"
-FINAL_DMG="$SCRIPT_DIR/dist/vRemoter-$VERSION.dmg"
+FINAL_DMG="$SCRIPT_DIR/dist/RemoteMic-$VERSION.dmg"
 
 "$SCRIPT_DIR/package-app.sh"
 
 rm -rf "$STAGING" "$FINAL_DMG"
 mkdir -p "$STAGING"
-ditto "$SCRIPT_DIR/dist/build/vRemote.app" "$STAGING/vRemote.app"
+ditto "$SCRIPT_DIR/dist/build/RemoteMic.app" "$STAGING/RemoteMic.app"
 ln -s /Applications "$STAGING/Applications"
 
 hdiutil create \
-  -volname "vRemoter $VERSION" \
+  -volname "RemoteMic $VERSION" \
   -srcfolder "$STAGING" \
   -ov \
   -format UDZO \

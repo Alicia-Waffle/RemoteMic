@@ -21,6 +21,15 @@ enum LaunchAtLogin {
         }
     }
 
+    /// Keeps the launch agent pointing at the current bundle after the app
+    /// moves or is renamed (for example vRemote.app → RemoteMic.app).
+    static func refreshPathIfNeeded() {
+        guard isEnabled else { return }
+        let storedPath = (NSDictionary(contentsOf: agentURL)?["ProgramArguments"] as? [String])?.last
+        guard storedPath != Bundle.main.bundlePath else { return }
+        try? install()
+    }
+
     private static func install() throws {
         let bundlePath = Bundle.main.bundlePath
         guard bundlePath.hasSuffix(".app") else {

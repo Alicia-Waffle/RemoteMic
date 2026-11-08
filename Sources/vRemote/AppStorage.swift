@@ -10,20 +10,20 @@ enum AppStorage {
 
     static let logsDirectory: URL = {
         FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Logs/vRemote", isDirectory: true)
+            .appendingPathComponent("Library/Logs/RemoteMic", isDirectory: true)
     }()
 
-    static let logFile = logsDirectory.appendingPathComponent("vRemote.log")
+    static let logFile = logsDirectory.appendingPathComponent("RemoteMic.log")
 
     static let applicationSupportDirectory: URL = {
         FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/vRemote", isDirectory: true)
+            .appendingPathComponent("Library/Application Support/RemoteMic", isDirectory: true)
     }()
 
     static let recordingsDirectory: URL = {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(
-                "Library/Application Support/vRemote/Recordings",
+                "Library/Application Support/RemoteMic/Recordings",
                 isDirectory: true
             )
     }()

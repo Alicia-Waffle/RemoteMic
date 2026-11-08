@@ -23,7 +23,7 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         case remote
     }
 
-    private static let targetDeviceName = "vRemoteDr 2ch"
+    private static let targetDeviceName = "RemoteMic 2ch"
     private static let outputSampleRate: Double = 48_000
     private static let outputChannels: AVAudioChannelCount = 2
 
@@ -49,7 +49,7 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
 
     // Virtual devices must never be picked as the fallback microphone.
     private static let virtualDeviceNameMarkers = [
-        "vRemoteDr", "vRemote", "MiRemoteV", "BlackHole", "Parrot",
+        "RemoteMic", "vRemote", "MiRemoteV", "BlackHole", "Parrot",
     ]
 
     // 按需采集：最后一次需要本地麦的信号消失后，等待这么久再关闭设备。
@@ -71,6 +71,7 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     private var captureIdleWorkItem: DispatchWorkItem?
     private var outputDeviceID: AudioDeviceID?
     private var outputIOProcID: AudioDeviceIOProcID?
+    private var virtualDeviceID: AudioDeviceID?
 
     private var pendingMac: [Float] = []
     private var pendingMacIndex = 0
@@ -96,11 +97,13 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         super.init()
 
         if let deviceID = Self.findOutputDevice(named: Self.targetDeviceName) {
-            startOutputDevice(deviceID)
+            // 不在这里启动 IOProc：空闲时让虚拟设备保持停止，避免 macOS
+            // 一直把 RemoteMic 记为“正在使用麦克风”。
+            virtualDeviceID = deviceID
         } else {
             print(
                 "[AUDIO] ⚠️ 找不到 \(Self.targetDeviceName)，" +
-                "请确认 vRemoteDriver.driver 已安装"
+                "请确认 RemoteMicDriver.driver 已安装"
             )
         }
 
@@ -157,9 +160,11 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
                 : "[AUDIO] 麦克风优先链路关闭"
         )
         if active {
+            ensureOutputRunning()
             startMacCaptureIfNeeded(reason: "遥控器录音")
         } else {
             scheduleMacCaptureIdleStop(reason: "遥控器停止")
+            releaseOutputIfIdle()
         }
         onRouteChanged?(active)
     }
@@ -234,7 +239,7 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
 
     var isMacInputEnabled: Bool { inputState.macEnabled }
     var isRemoteInputEnabled: Bool { inputState.remoteEnabled }
-    var isOutputDeviceAvailable: Bool { outputDeviceID != nil }
+    var isOutputDeviceAvailable: Bool { virtualDeviceID != nil }
 
     func stop() {
         diagnosticsTimer?.invalidate()
@@ -251,7 +256,7 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
             let stopStatus = AudioDeviceStop(deviceID, ioProcID)
             let destroyStatus = AudioDeviceDestroyIOProcID(deviceID, ioProcID)
             print(
-                "[AUDIO] vRemote IOProc 已释放: " +
+                "[AUDIO] RemoteMic IOProc 已释放: " +
                 "stop=\(stopStatus), destroy=\(destroyStatus)"
             )
         }
@@ -291,6 +296,7 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         captureIdleWorkItem?.cancel()
         captureIdleWorkItem = nil
         guard macInputEnabled else { return }
+        ensureOutputRunning()
 
         if captureConfigured {
             captureQueue.async { [weak self] in
@@ -327,6 +333,7 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
             self.captureSession.stopRunning()
             self.setCaptureActive(false)
             print("[AUDIO] MacBook 麦克风采集已暂停（按需）: \(reason)")
+            self.releaseOutputIfIdle()
         }
     }
 
@@ -568,6 +575,10 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         if let firstRemoteBufferDescription {
             print(firstRemoteBufferDescription)
         }
+
+        if source == .remote {
+            ensureOutputRunning()
+        }
     }
 
     private static func resample(
@@ -593,6 +604,39 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
 
     // MARK: - CoreAudio direct output
 
+    /// 真正需要出声时才挂上 IOProc，避免虚拟设备空闲也常驻运行。
+    private func ensureOutputRunning() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  self.outputIOProcID == nil,
+                  let deviceID = self.virtualDeviceID
+            else { return }
+            self.startOutputDevice(deviceID)
+        }
+    }
+
+    /// 没有任何路径需要出声时停止 IOProc，让 macOS 不再认为麦克风被占用。
+    private func releaseOutputIfIdle() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.stateLock.lock()
+            let busy = self.mixActive || self.captureActive || self.doubaoRecording
+            self.stateLock.unlock()
+            guard !busy,
+                  let deviceID = self.outputDeviceID,
+                  let ioProcID = self.outputIOProcID
+            else { return }
+            let stopStatus = AudioDeviceStop(deviceID, ioProcID)
+            let destroyStatus = AudioDeviceDestroyIOProcID(deviceID, ioProcID)
+            self.outputDeviceID = nil
+            self.outputIOProcID = nil
+            print(
+                "[AUDIO] RemoteMic IOProc 已暂停（空闲）: " +
+                "stop=\(stopStatus), destroy=\(destroyStatus)"
+            )
+        }
+    }
+
     private func startOutputDevice(_ deviceID: AudioDeviceID) {
         var ioProcID: AudioDeviceIOProcID?
         let createStatus = AudioDeviceCreateIOProcIDWithBlock(
@@ -603,20 +647,20 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
             self?.render(outputData)
         }
         guard createStatus == noErr, let ioProcID else {
-            print("[AUDIO] ⚠️ 创建 vRemote IOProc 失败: OSStatus=\(createStatus)")
+            print("[AUDIO] ⚠️ 创建 RemoteMic IOProc 失败: OSStatus=\(createStatus)")
             return
         }
 
         let startStatus = AudioDeviceStart(deviceID, ioProcID)
         guard startStatus == noErr else {
             AudioDeviceDestroyIOProcID(deviceID, ioProcID)
-            print("[AUDIO] ⚠️ 启动 vRemote IOProc 失败: OSStatus=\(startStatus)")
+            print("[AUDIO] ⚠️ 启动 RemoteMic IOProc 失败: OSStatus=\(startStatus)")
             return
         }
 
         outputDeviceID = deviceID
         outputIOProcID = ioProcID
-        print("[AUDIO] vRemote IOProc 已启动: id=\(deviceID), 48000 Hz stereo")
+        print("[AUDIO] RemoteMic IOProc 已启动: id=\(deviceID), 48000 Hz stereo")
     }
 
     private func render(_ outputData: UnsafeMutablePointer<AudioBufferList>) {

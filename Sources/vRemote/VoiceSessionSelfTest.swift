@@ -31,7 +31,7 @@ enum VoiceSessionSelfTest {
                 pid: 123,
                 processObjectID: 456,
                 inputDeviceIDs: state == .active ? [789] : [],
-                inputDeviceNames: state == .active ? ["vRemoteDr 2ch"] : []
+                inputDeviceNames: state == .active ? ["RemoteMic 2ch"] : []
             )
         }
     }

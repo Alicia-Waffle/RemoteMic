@@ -5,8 +5,8 @@ SCRIPT_DIR="${0:A:h}"
 PLIST="$SCRIPT_DIR/Packaging/Info.plist"
 VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST")
 TAG="v$VERSION"
-PKG="$SCRIPT_DIR/dist/vRemoter-$VERSION.pkg"
-DMG="$SCRIPT_DIR/dist/vRemoter-$VERSION.dmg"
+PKG="$SCRIPT_DIR/dist/RemoteMic-$VERSION.pkg"
+DMG="$SCRIPT_DIR/dist/RemoteMic-$VERSION.dmg"
 NOTES="${1:-}"
 
 cd "$SCRIPT_DIR"
@@ -20,10 +20,10 @@ if gh release view "$TAG" >/dev/null 2>&1; then
 else
   if [[ -n "$NOTES" ]]; then
     gh release create "$TAG" "$PKG" "$DMG" \
-      --title "vRemoter $VERSION" --notes-file "$NOTES"
+      --title "RemoteMic $VERSION" --notes-file "$NOTES"
   else
     gh release create "$TAG" "$PKG" "$DMG" \
-      --title "vRemoter $VERSION" --generate-notes
+      --title "RemoteMic $VERSION" --generate-notes
   fi
 fi
 

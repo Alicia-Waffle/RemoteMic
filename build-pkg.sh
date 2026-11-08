@@ -6,11 +6,11 @@ PLIST="$SCRIPT_DIR/Packaging/Info.plist"
 VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST")
 PACKAGE_VERSION=$(print -r -- "$VERSION" | sed -E 's/[^0-9.]+/./g; s/\.+/./g; s/^\.//; s/\.$//')
 PAYLOAD_ROOT="$SCRIPT_DIR/dist/pkg-root"
-UNSIGNED_PKG="$SCRIPT_DIR/dist/vRemoter-$VERSION-unsigned.pkg"
-FINAL_PKG="$SCRIPT_DIR/dist/vRemoter-$VERSION.pkg"
+UNSIGNED_PKG="$SCRIPT_DIR/dist/RemoteMic-$VERSION-unsigned.pkg"
+FINAL_PKG="$SCRIPT_DIR/dist/RemoteMic-$VERSION.pkg"
 
 "$SCRIPT_DIR/package-app.sh"
-DRIVER="$SCRIPT_DIR/Driver/build/vRemoteDriver.driver"
+DRIVER="$SCRIPT_DIR/Driver/build/RemoteMicDriver.driver"
 if [[ -d "$DRIVER" ]]; then
   # 驱动源码（已安装的 BlackHole）可能不在当前机器上；已有构建产物时直接复用。
   print "Reusing driver: $DRIVER"
@@ -22,9 +22,9 @@ rm -rf "$PAYLOAD_ROOT" "$UNSIGNED_PKG" "$FINAL_PKG"
 mkdir -p "$PAYLOAD_ROOT/Applications"
 mkdir -p "$PAYLOAD_ROOT/Library/Audio/Plug-Ins/HAL"
 
-ditto "$SCRIPT_DIR/dist/build/vRemote.app" "$PAYLOAD_ROOT/Applications/vRemote.app"
-ditto "$SCRIPT_DIR/Driver/build/vRemoteDriver.driver" \
-  "$PAYLOAD_ROOT/Library/Audio/Plug-Ins/HAL/vRemoteDriver.driver"
+ditto "$SCRIPT_DIR/dist/build/RemoteMic.app" "$PAYLOAD_ROOT/Applications/RemoteMic.app"
+ditto "$SCRIPT_DIR/Driver/build/RemoteMicDriver.driver" \
+  "$PAYLOAD_ROOT/Library/Audio/Plug-Ins/HAL/RemoteMicDriver.driver"
 
 pkgbuild \
   --root "$PAYLOAD_ROOT" \

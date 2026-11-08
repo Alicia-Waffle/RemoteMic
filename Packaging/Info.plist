@@ -5,23 +5,23 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>zh_CN</string>
 	<key>CFBundleDisplayName</key>
-	<string>vRemoter</string>
+	<string>RemoteMic</string>
 	<key>CFBundleExecutable</key>
-	<string>vRemote</string>
+	<string>RemoteMic</string>
 	<key>CFBundleIconFile</key>
-	<string>vRemoter.icns</string>
+	<string>RemoteMic.icns</string>
 	<key>CFBundleIdentifier</key>
 	<string>local.simaqingfeng.vRemote</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>vRemoter</string>
+	<string>RemoteMic</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.4.0</string>
+	<string>1.4.1</string>
 	<key>CFBundleVersion</key>
-	<string>140</string>
+	<string>141</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>12.0</string>
 	<key>LSUIElement</key>

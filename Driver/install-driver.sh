@@ -2,8 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="${0:A:h}"
-SOURCE="$SCRIPT_DIR/build/vRemoteDriver.driver"
-DESTINATION="/Library/Audio/Plug-Ins/HAL/vRemoteDriver.driver"
+SOURCE="$SCRIPT_DIR/build/RemoteMicDriver.driver"
+DESTINATION="/Library/Audio/Plug-Ins/HAL/RemoteMicDriver.driver"
 
 if [[ ! -d "$SOURCE" ]]; then
   print -u2 "Build the proof-of-concept driver first: $SOURCE"

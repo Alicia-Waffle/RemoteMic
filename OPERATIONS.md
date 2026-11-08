@@ -17,8 +17,8 @@ Spaceship DNS
   └─ /srv/vincentstudio/updates/vremoter/
        ├─ releases.json
        ├─ commerce.json
-       ├─ vRemoter-latest.pkg
-       ├─ vRemoter-latest.dmg
+       ├─ RemoteMic-latest.pkg
+       ├─ RemoteMic-latest.dmg
        └─ 版本化 PKG / DMG
 ```
 

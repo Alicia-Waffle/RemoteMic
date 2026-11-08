@@ -2,8 +2,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="${0:A:h}"
-LABEL="local.simaqingfeng.vRemote.hidhelper"
-HELPER_SOURCE="$SCRIPT_DIR/dist/build/vRemote.app/Contents/Helpers/vRemoteHIDHelper"
+LABEL="local.simaqingfeng.RemoteMic.hidhelper"
+LEGACY_LABEL="local.simaqingfeng.vRemote.hidhelper"
+HELPER_SOURCE="$SCRIPT_DIR/dist/build/RemoteMic.app/Contents/Helpers/RemoteMicHIDHelper"
 HELPER_DEST="/Library/PrivilegedHelperTools/$LABEL"
 PLIST_DEST="/Library/LaunchDaemons/$LABEL.plist"
 
@@ -22,6 +23,10 @@ fi
 # devices to anything that is not root.
 install -o root -g wheel -m 755 "$HELPER_SOURCE" "$HELPER_DEST"
 codesign --force --sign - --timestamp=none "$HELPER_DEST"
+
+launchctl bootout system "/Library/LaunchDaemons/$LEGACY_LABEL.plist" 2>/dev/null || true
+rm -f "/Library/LaunchDaemons/$LEGACY_LABEL.plist" \
+  "/Library/PrivilegedHelperTools/$LEGACY_LABEL"
 
 cat > "$PLIST_DEST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -59,6 +64,6 @@ print "LaunchDaemon: $PLIST_DEST"
 if launchctl print "system/$LABEL" >/dev/null 2>&1; then
   print "Status: running (system/$LABEL)"
 else
-  print -u2 "Status: not running; check 'log show --predicate \"process == \\\"vRemoteHIDHelper\\\"\" --last 1m'"
+  print -u2 "Status: not running; check 'log show --predicate \"process == \\\"RemoteMicHIDHelper\\\"\" --last 1m'"
   exit 1
 fi

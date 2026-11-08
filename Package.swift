@@ -21,9 +21,9 @@ let package = Package(
         // Runs as root via launchd; seizes the keyboard-class HID collection
         // that macOS refuses to hand to an unprivileged process.
         .executableTarget(
-            name: "vRemoteHIDHelper",
+            name: "RemoteMicHIDHelper",
             dependencies: ["HIDHelperShared"],
-            path: "Sources/vRemoteHIDHelper"
+            path: "Sources/RemoteMicHIDHelper"
         ),
     ]
 )

@@ -27,9 +27,7 @@ final class BLEBridge: NSObject {
 
     /// Where we persist a previously-discovered peripheral UUID so the next
     /// launch can attempt `retrievePeripherals` directly without scanning.
-    private static let appSupportDirectory = NSString(
-        string: "~/Library/Application Support/vRemote"
-    ).expandingTildeInPath
+    private static let appSupportDirectory = AppStorage.applicationSupportDirectory.path
 
     /// Called whenever the bridge produces or stops producing audio (true = streaming).
     var onStreamingChanged: ((Bool, Int /* sampleRate */) -> Void)?

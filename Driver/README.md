@@ -1,6 +1,6 @@
 # vRemote Driver HAL builder
 
-This is the reproducible driver builder used by vRemoter.
+This is the reproducible driver builder used by RemoteMic.
 Doubao filters CoreAudio devices whose transport type is `virtual`, so the
 generated device uses a USB transport identity while remaining a user-space
 HAL plug-in.
@@ -16,7 +16,7 @@ The build script:
 
 It does not modify the installed BlackHole driver. The generated bundle is:
 
-`build/vRemoteDriver.driver`
+`build/RemoteMicDriver.driver`
 
 This remains a binary-patching build based on the locally installed universal
 BlackHole 2ch driver. A future release should replace it with a source build

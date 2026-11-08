@@ -178,7 +178,7 @@ private actor GitHubUpdateService {
         }
 
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("vRemoter-Updates", isDirectory: true)
+            .appendingPathComponent("RemoteMic-Updates", isDirectory: true)
         try FileManager.default.createDirectory(
             at: directory,
             withIntermediateDirectories: true
@@ -310,7 +310,7 @@ private final class UpdateWindowModel: ObservableObject {
         {
           "id": 999999,
           "tag_name": "v1.1.1",
-          "name": "vRemoter 1.1.1",
+          "name": "RemoteMic 1.1.1",
           "body": "- 修复 Chromecast 短按偶尔未持续开启遥控器麦克风的问题\\n- 修复电脑 Option 关闭后旧状态可能重新开启遥控器音频的问题\\n- 改进双遥控器会话隔离与开麦确认\\n- 修复 X6 第一次短按可能被误判的问题",
           "html_url": "https://updates.vincentstudio.org/vremoter/",
           "draft": false,
@@ -436,7 +436,7 @@ private struct VersionUpdateView: View {
                 .resizable()
                 .interpolation(.high)
                 .frame(width: 116, height: 116)
-            Text("vRemoter")
+            Text("RemoteMic")
                 .font(.system(size: 28, weight: .semibold))
                 .foregroundStyle(UpdateTheme.text)
                 .padding(.top, 18)

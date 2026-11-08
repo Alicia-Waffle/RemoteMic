@@ -60,8 +60,8 @@ enum PermissionKind: String, Identifiable, CaseIterable {
         case .doubaoInput:
             return [
                 L10n.text(
-                    "首次直接打开豆包设置时，macOS 可能询问“App 管理”；请允许 vRemote 启动豆包输入法的设置组件。",
-                    "The first direct launch may ask for App Management. Allow vRemote to open Doubao's settings component."
+                    "首次直接打开豆包设置时，macOS 可能询问“App 管理”；请允许 RemoteMic 启动豆包输入法的设置组件。",
+                    "The first direct launch may ask for App Management. Allow RemoteMic to open Doubao's settings component."
                 ),
                 L10n.text(
                     "打开菜单栏输入法菜单，点击“豆包输入法设置”。",
@@ -72,8 +72,8 @@ enum PermissionKind: String, Identifiable, CaseIterable {
                     "Open Voice Input, locate Microphone Selection, and click the current option."
                 ),
                 L10n.text(
-                    "选择“自动检测”或“vRemoteDr 2ch”。如果自动检测没有声音，请直接选择 vRemoteDr 2ch。",
-                    "Choose Automatic Detection or vRemoteDr 2ch. If automatic detection is silent, select vRemoteDr 2ch directly."
+                    "选择“自动检测”或“RemoteMic 2ch”。如果自动检测没有声音，请直接选择 RemoteMic 2ch。",
+                    "Choose Automatic Detection or RemoteMic 2ch. If automatic detection is silent, select RemoteMic 2ch directly."
                 )
             ]
         case .microphone:
@@ -83,8 +83,8 @@ enum PermissionKind: String, Identifiable, CaseIterable {
                     "System Settings will open Privacy & Security > Microphone."
                 ),
                 L10n.text(
-                    "找到 vRemote（或 vRemoter），打开右侧开关；若已经打开，关闭后重新打开一次。",
-                    "Find vRemote or vRemoter and enable it. If already enabled, turn it off and on once."
+                    "找到 RemoteMic，打开右侧开关；若已经打开，关闭后重新打开一次。",
+                    "Find RemoteMic and enable it. If already enabled, turn it off and on once."
                 )
             ]
         case .accessibility:
@@ -94,8 +94,8 @@ enum PermissionKind: String, Identifiable, CaseIterable {
                     "System Settings will open Privacy & Security > Accessibility."
                 ),
                 L10n.text(
-                    "找到 vRemote（或 vRemoter）并打开开关。列表中没有时，点加号选择应用。",
-                    "Enable vRemote or vRemoter. If it is missing, use the plus button to add the app."
+                    "找到 RemoteMic 并打开开关。列表中没有时，点加号选择应用。",
+                    "Enable RemoteMic. If it is missing, use the plus button to add the app."
                 )
             ]
         case .inputMonitoring:
@@ -105,8 +105,8 @@ enum PermissionKind: String, Identifiable, CaseIterable {
                     "System Settings will open Privacy & Security > Input Monitoring."
                 ),
                 L10n.text(
-                    "找到 vRemote（或 vRemoter）并打开开关。macOS 提示重新启动时允许它重新打开。",
-                    "Enable vRemote or vRemoter, then allow macOS to relaunch it when prompted."
+                    "找到 RemoteMic 并打开开关。macOS 提示重新启动时允许它重新打开。",
+                    "Enable RemoteMic, then allow macOS to relaunch it when prompted."
                 )
             ]
         case .bluetooth:
@@ -116,8 +116,8 @@ enum PermissionKind: String, Identifiable, CaseIterable {
                     "System Settings will open Privacy & Security > Bluetooth."
                 ),
                 L10n.text(
-                    "找到 vRemote（或 vRemoter）并打开开关，然后返回应用等待遥控器重新连接。",
-                    "Enable vRemote or vRemoter, then return to the app and wait for the remote to reconnect."
+                    "找到 RemoteMic 并打开开关，然后返回应用等待遥控器重新连接。",
+                    "Enable RemoteMic, then return to the app and wait for the remote to reconnect."
                 )
             ]
         }
@@ -173,9 +173,9 @@ private enum WindowChrome {
 enum LogoAsset {
     static let image: NSImage = {
         let candidates: [URL?] = [
-            Bundle.main.url(forResource: "vRemoterLogo", withExtension: "png"),
+            Bundle.main.url(forResource: "RemoteMicLogo", withExtension: "png"),
             URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-                .appendingPathComponent("Design/vRemoter-Logo-v1/vRemoter-app-icon-v9.png")
+                .appendingPathComponent("Design/RemoteMic-Logo-v1/RemoteMic-app-icon-v1.png")
         ]
         for candidate in candidates.compactMap({ $0 }) {
             if let image = NSImage(contentsOf: candidate) { return image }
@@ -340,7 +340,7 @@ private final class ConsoleViewModel: ObservableObject {
     var onInputTriggerChanged: (() -> Void)?
     var onRemoteMappingEnabledChanged: ((SupportedRemoteID, Bool) -> Void)?
 
-    var doubaoUsesVRemote: Bool { doubaoInput.contains("vRemoteDr 2ch") }
+    var doubaoUsesVRemote: Bool { doubaoInput.contains("RemoteMic 2ch") }
     var macSolo: Bool { macInputEnabled && !remoteInputEnabled }
     var remoteSolo: Bool { remoteInputEnabled && !macInputEnabled }
 
@@ -531,7 +531,7 @@ final class DebugWindowController: NSWindowController, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = L10n.text("vRemoter 控制台", "vRemoter Console")
+        window.title = L10n.text("RemoteMic 控制台", "RemoteMic Console")
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = true
@@ -728,7 +728,7 @@ private struct StudioMixerView: View {
                     .interpolation(.high)
                     .frame(width: 40, height: 40)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("vRemoter")
+                    Text("RemoteMic")
                         .font(.system(size: 22, weight: .semibold))
                         .foregroundStyle(ConsoleTheme.text)
                     Text(L10n.text("双麦语音输入", "Dual microphone input"))
@@ -781,7 +781,7 @@ private struct StudioMixerView: View {
             .overlay(Capsule().stroke(ConsoleTheme.lineSoft, lineWidth: 1))
         }
         .buttonStyle(.plain)
-        .help(L10n.text("支持 vRemoter", "Support vRemoter"))
+        .help(L10n.text("支持 RemoteMic", "Support RemoteMic"))
     }
 
     private var statusBadge: some View {
@@ -889,7 +889,7 @@ private struct StudioMixerView: View {
                 title: L10n.text("豆包输入设备", "Doubao input"),
                 value: model.doubaoIsRecording
                     ? (model.doubaoUsesVRemote
-                        ? L10n.text("vRemoteDr 2ch · 录音中", "vRemoteDr 2ch · Recording")
+                        ? L10n.text("RemoteMic 2ch · 录音中", "RemoteMic 2ch · Recording")
                         : model.doubaoInput)
                     : L10n.text("当前未录音", "Not recording"),
                 tone: model.doubaoIsRecording && !model.doubaoUsesVRemote ? .error : .good,
@@ -901,7 +901,7 @@ private struct StudioMixerView: View {
             StatusRow(
                 title: L10n.text("音频驱动", "Audio driver"),
                 value: model.driverAvailable
-                    ? L10n.text("vRemoteDr 2ch 可用", "vRemoteDr 2ch available")
+                    ? L10n.text("RemoteMic 2ch 可用", "RemoteMic 2ch available")
                     : L10n.text("未安装或需要修复", "Missing or needs repair"),
                 tone: model.driverAvailable ? .good : .error,
                 action: model.driverAvailable ? nil : L10n.text("打开声音", "Open Sound"),
@@ -1814,7 +1814,7 @@ private struct OutputChannelView: View {
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
                 Spacer()
-                Text("vRemoteDr 2ch")
+                Text("RemoteMic 2ch")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(ConsoleTheme.text)
                     .lineLimit(1)
@@ -2097,7 +2097,7 @@ private struct DonationPromptView: View {
                 .frame(width: 54, height: 54)
             Text(L10n.text(
                 "制作不易，麻烦打个赏补偿一点我的 Token 费吧。\n谢主隆恩🙏🙏🙏～～～",
-                "vRemoter is free, but apparently tokens never got that memo. If the app saves you a little time, buying me a coffee helps keep it going. My API balance sends its thanks. 🙏"
+                "RemoteMic is free, but apparently tokens never got that memo. If the app saves you a little time, buying me a coffee helps keep it going. My API balance sends its thanks. 🙏"
             ))
                 .font(.system(size: 21, weight: .semibold))
                 .foregroundStyle(ConsoleTheme.text)
@@ -2130,7 +2130,7 @@ private struct DonationView: View {
                     .resizable()
                     .frame(width: 38, height: 38)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(L10n.text("给 vRemoter 打个赏", "Buy vRemoter a coffee"))
+                    Text(L10n.text("给 RemoteMic 打个赏", "Buy RemoteMic a coffee"))
                         .font(.system(size: 20, weight: .semibold))
                     Text(L10n.text("感谢你帮我补一点 Token 费", "Free app, non-free tokens."))
                         .font(.system(size: 11))
@@ -2412,7 +2412,7 @@ private struct GuideScreenshot: View {
                     .foregroundStyle(ConsoleTheme.secondary)
                 HStack {
                     Image(nsImage: LogoAsset.image).resizable().frame(width: 30, height: 30)
-                    Text("vRemoter")
+                    Text("RemoteMic")
                     Spacer()
                     Toggle("", isOn: .constant(false)).labelsHidden()
                 }

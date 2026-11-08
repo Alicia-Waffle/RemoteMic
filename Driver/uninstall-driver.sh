@@ -1,7 +1,7 @@
 #!/bin/zsh
 set -euo pipefail
 
-DESTINATION="/Library/Audio/Plug-Ins/HAL/vRemoteDriver.driver"
+DESTINATION="/Library/Audio/Plug-Ins/HAL/RemoteMicDriver.driver"
 
 rm -rf "$DESTINATION"
 killall -9 coreaudiod 2>/dev/null || true
