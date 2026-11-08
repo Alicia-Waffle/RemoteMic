@@ -37,6 +37,6 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>同时使用蓝牙遥控器和 MacBook 麦克风进行语音输入。</string>
 	<key>VRReleasesURL</key>
-	<string>https://api.github.com/repos/TheShadow178/vRemoter/releases?per_page=10</string>
+	<string>https://api.github.com/repos/TheShadow178/RemoteMic/releases?per_page=10</string>
 </dict>
 </plist>

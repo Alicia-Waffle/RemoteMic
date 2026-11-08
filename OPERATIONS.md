@@ -60,7 +60,7 @@ Spaceship DNS
 
 ## 4. 发布规则
 
-发布源为 GitHub Releases（`TheShadow178/vRemoter`），APP 读取 `VRReleasesURL` 并优先下载附件中的 `.pkg`。
+发布源为 GitHub Releases（`TheShadow178/RemoteMic`），APP 读取 `VRReleasesURL` 并优先下载附件中的 `.pkg`。
 
 ### 每次发版
 

@@ -4,7 +4,7 @@
 
 ## 0. 现在的状态
 
-- 代码：`TheShadow178/vRemoter`，`main` 分支
+- 代码：`TheShadow178/RemoteMic`，`main` 分支
 - 产物：`RemoteMic-*.dmg`（`RemoteMic.app` + 安装脚本）
 - 已修：Chromecast 按键失效（root helper 抢占 HID）、遥控器麦优先 + 本地麦自动回退
 - 未做：两路独立设备（要改驱动）、AEC/降噪、Developer ID 签名与公证

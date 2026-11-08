@@ -199,7 +199,7 @@ RemoteMic 免费提供。制作不易，麻烦打个赏补偿一点我的 Token 
 
 APP 从 `Info.plist` 的 `VRReleasesURL` 读取版本清单，指向本 Fork 的 GitHub Releases API：
 
-`https://api.github.com/repos/TheShadow178/vRemoter/releases?per_page=10`
+`https://api.github.com/repos/TheShadow178/RemoteMic/releases?per_page=10`
 
 - 内置更新优先下载 Release 附件中的 `.pkg`，没有 PKG 时退回 `.dmg`。
 - 因此每次发版都必须附带 PKG 或 DMG，否则“立即更新”只能打开 Release 页面。
@@ -211,7 +211,7 @@ APP 从 `Info.plist` 的 `VRReleasesURL` 读取版本清单，指向本 Fork 的
 
 修改公开配置即可控制购买入口，不需要重新发布 APP。没有启用且有效的购买链接时，APP 会隐藏“购买遥控器”按钮。
 
-> 本 Fork 已从 `Info.plist` 移除 `VRCommerceConfigURL`，不会再请求该地址。`VRReleasesURL` 指向本 Fork 的 GitHub Releases（`TheShadow178/vRemoter`），检查更新与下载入口都来自该仓库；仍可通过 Info.plist 覆盖为其他清单地址。
+> 本 Fork 已从 `Info.plist` 移除 `VRCommerceConfigURL`，不会再请求该地址。`VRReleasesURL` 指向本 Fork 的 GitHub Releases（`TheShadow178/RemoteMic`），检查更新与下载入口都来自该仓库；仍可通过 Info.plist 覆盖为其他清单地址。
 
 ## 发布前阻断项
 
