@@ -76,7 +76,12 @@ RemoteMic 把蓝牙语音遥控器变成 macOS 上的 Vibe Coding 控制器：�
 
 Chromecast Remote 已实现语音键双模式：短按第一次打开、第二次关闭；长按时持续录音，松手自动关闭。APP 还提供按型号保存的按键映射，可把方向、确认、返回、Home、YouTube、Netflix、信源、音量等按键改为常用 macOS 操作。
 
-当前版本：`1.4.1`（本 Fork）
+当前版本：`1.4.2`（本 Fork）
+
+## 1.4.2 变更（本 Fork）
+
+- 双击 / 长按都禁用时（默认状态）不再进入手势判定，也不创建长按定时器：按下即生效、松手即发单击，按键延迟降到最短；顺手修掉了「按住超过 0.60 秒反而什么都不触发」。
+- 打赏收款码换成维护者本人的微信 / 支付宝，README 与官网同源，移除没有收款码的 PayPal 入口。
 
 ## 1.4.1 变更（本 Fork）
 
@@ -137,11 +142,11 @@ Chromecast Remote 已实现语音键双模式：短按第一次打开、第二�
 
 ## 支持开发
 
-vRemoter 免费提供。制作不易，麻烦打个赏补偿一点我的 Token 费吧。谢主隆恩🙏🙏🙏～～～
+RemoteMic 免费提供。制作不易，麻烦打个赏补偿一点我的 Token 费吧。谢主隆恩🙏🙏🙏～～～
 
-| 微信 / WeChat | 支付宝 / Alipay | PayPal |
-|---|---|---|
-| <img src="docs/assets/donate/wechat.JPG" alt="微信打赏二维码" width="220"> | <img src="docs/assets/donate/alipay.JPG" alt="支付宝打赏二维码" width="220"> | <img src="docs/assets/donate/paypal.JPG" alt="PayPal donation QR code" width="220"> |
+| 微信 / WeChat | 支付宝 / Alipay |
+|---|---|
+| <img src="Resources/buymeacoffee/wechat-qr.png" alt="微信打赏二维码" width="220"> | <img src="Resources/buymeacoffee/alipay-qr.png" alt="支付宝打赏二维码" width="220"> |
 
 ## 仓库与公开服务边界
 

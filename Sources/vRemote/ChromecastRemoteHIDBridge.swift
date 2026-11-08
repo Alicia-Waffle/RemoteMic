@@ -72,9 +72,12 @@ final class ChromecastRemoteHIDBridge {
                       where: { $0.id == buttonID }
                   )
             else { return false }
-            // 双击 / 长按默认就是「禁用」，所以所有可映射键都要走手势判定，
-            // 否则长按会被当成一次单击执行。
-            return button.remappable && !button.voiceControlled
+            // 双击 / 长按都禁用时没有任何手势要判定，直接走最短路径：
+            // 按下 / 松开原样转发，不建任何定时器。
+            guard button.remappable && !button.voiceControlled else { return false }
+            let store = RemoteMappingStore.shared
+            return store.target(for: button, remote: .chromecast, gesture: .double) != .disabled
+                || store.target(for: button, remote: .chromecast, gesture: .long) != .disabled
         }
         gestureRecognizer.isDoubleEnabled = { buttonID in
             guard let button = RemoteProfiles.chromecastButtons.first(
@@ -84,6 +87,16 @@ final class ChromecastRemoteHIDBridge {
                 for: button,
                 remote: .chromecast,
                 gesture: .double
+            ) != .disabled
+        }
+        gestureRecognizer.isLongEnabled = { buttonID in
+            guard let button = RemoteProfiles.chromecastButtons.first(
+                where: { $0.id == buttonID }
+            ) else { return false }
+            return RemoteMappingStore.shared.target(
+                for: button,
+                remote: .chromecast,
+                gesture: .long
             ) != .disabled
         }
         gestureRecognizer.onGesture = { [weak self] buttonID, gesture, isDown in

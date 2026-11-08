@@ -9,7 +9,6 @@
   --amber: #f4a447;
   --wechat: #07c160;
   --alipay: #1677ff;
-  --paypal: #1769aa;
   --max: 1180px;
 }
 
@@ -183,14 +182,12 @@ figcaption { margin-top: 11px; color: var(--secondary); font-size: 11px; }
 .donation-panel { width: min(100%, 520px); height: 500px; padding: 18px; justify-self: end; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; background: #0b0c0e; }
 .tabs { display: flex; gap: 7px; }
 .tabs button { min-height: 38px; padding: 0 14px; border: 1px solid var(--line); border-radius: 7px; font-size: 12px; font-weight: 700; }
-.donation-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.donation-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .donation-tabs button { min-width: 0; padding-inline: 8px; white-space: nowrap; }
 .donation-tabs button[data-donation="wechat"] { color: var(--wechat); }
 .donation-tabs button[data-donation="wechat"].active { color: white; border-color: var(--wechat); background: var(--wechat); }
 .donation-tabs button[data-donation="alipay"] { color: var(--alipay); }
 .donation-tabs button[data-donation="alipay"].active { color: white; border-color: var(--alipay); background: var(--alipay); }
-.donation-tabs button[data-donation="paypal"] { color: #73afff; }
-.donation-tabs button[data-donation="paypal"].active { color: white; border-color: var(--paypal); background: var(--paypal); }
 #donation-code { width: 100%; min-height: 0; flex: 1; margin-top: 16px; object-fit: contain; background: #050607; border-radius: 8px; }
 
 footer { border-top: 1px solid var(--line); }

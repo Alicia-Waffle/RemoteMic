@@ -16,6 +16,10 @@ final class RemoteGestureRecognizer {
     /// 避免连按两下时第一下被吃掉、以及每次单击多等 280 ms。
     var isDoubleEnabled: ((String) -> Bool)?
 
+    /// 只有配置了长按动作的按键才需要 0.60 s 长按定时器；
+    /// 否则连定时器都不创建，按键走最短路径。
+    var isLongEnabled: ((String) -> Bool)?
+
     private static let longPressDelay: TimeInterval = 0.60
     private static let doubleTapInterval: TimeInterval = 0.28
 
@@ -67,6 +71,10 @@ final class RemoteGestureRecognizer {
         pressSequence += 1
         let sequence = pressSequence
         activePress = ActivePress(buttonID: buttonID, longPressTriggered: false)
+
+        // 长按未配置时不建定时器：松手就按单击处理，不会出现「按住超过
+        // 0.60 秒反而什么都不触发」。
+        guard isLongEnabled?(buttonID) ?? true else { return }
 
         longPressTimer?.cancel()
         let item = DispatchWorkItem { [weak self] in

@@ -32,9 +32,8 @@ languageButtons.forEach((button) => {
 });
 
 const donationAssets = {
-  wechat: ['assets/donate/wechat.JPG', 'WeChat payment QR code'],
-  alipay: ['assets/donate/alipay.JPG', 'Alipay payment QR code'],
-  paypal: ['assets/donate/paypal.JPG', 'PayPal payment QR code']
+  wechat: ['assets/donate/wechat-qr.png', 'WeChat payment QR code'],
+  alipay: ['assets/donate/alipay-qr.png', 'Alipay payment QR code']
 };
 document.querySelectorAll('[data-donation]').forEach((button) => {
   button.addEventListener('click', () => {
