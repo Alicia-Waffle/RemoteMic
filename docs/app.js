@@ -1,6 +1,6 @@
 const languageButtons = document.querySelectorAll('[data-set-language]');
 const translatedElements = document.querySelectorAll('[data-zh][data-en]');
-let language = localStorage.getItem('vremoter-language') ||
+let language = localStorage.getItem('remotemic-language') ||
   (navigator.language.toLowerCase().startsWith('zh') ? 'zh' : 'en');
 
 function applyLanguage(nextLanguage) {
@@ -24,7 +24,7 @@ function applyLanguage(nextLanguage) {
       ? 'assets/screenshots/vremoter-mapping-chromecast-1.1.1.png'
       : 'assets/screenshots/vremoter-mapping-chromecast-1.1.1-en.png';
   }
-  localStorage.setItem('vremoter-language', language);
+  localStorage.setItem('remotemic-language', language);
 }
 
 languageButtons.forEach((button) => {
