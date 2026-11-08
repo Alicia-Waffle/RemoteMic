@@ -167,7 +167,9 @@ private actor GitHubUpdateService {
     func downloadInstaller(for release: GitHubRelease) async throws -> URL? {
         guard let asset = release.installerAsset else { return nil }
         var request = URLRequest(url: asset.browserDownloadURL)
-        request.timeoutInterval = 120
+        // GitHub 附件在部分网络下只有几十 KB/s，9 MB 的包能下几分钟；
+        // 120 秒超时会在下载中途被误判为失败，放宽到 10 分钟。
+        request.timeoutInterval = 600
         request.setValue("application/octet-stream", forHTTPHeaderField: "Accept")
         request.setValue("vRemoter/\(currentVersion)", forHTTPHeaderField: "User-Agent")
 
