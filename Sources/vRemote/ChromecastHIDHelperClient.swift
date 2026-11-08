@@ -18,9 +18,13 @@ final class ChromecastHIDHelperClient: NSObject, HIDHelperClientProtocol {
     /// Returns `nil` when the helper is not installed or cannot seize.
     static func probe(
         timeout: TimeInterval = 1.2,
+        onButton: ((String, Bool) -> Void)? = nil,
+        onDeviceState: ((Bool) -> Void)? = nil,
         completion: @escaping (ChromecastHIDHelperClient?) -> Void
     ) {
         let client = ChromecastHIDHelperClient()
+        client.onButton = onButton
+        client.onDeviceState = onDeviceState
         client.beginProbe(timeout: timeout, completion: completion)
     }
 
@@ -90,6 +94,7 @@ final class ChromecastHIDHelperClient: NSObject, HIDHelperClientProtocol {
     // MARK: - HIDHelperClientProtocol
 
     func buttonEvent(usageHex: String, isDown: Bool) {
+        print("[CAST-HID] helper button \(usageHex) \(isDown ? "DOWN" : "UP")")
         guard let onButton else { return }
         DispatchQueue.main.async {
             onButton(usageHex, isDown)
@@ -97,6 +102,7 @@ final class ChromecastHIDHelperClient: NSObject, HIDHelperClientProtocol {
     }
 
     func deviceState(connected: Bool) {
+        print("[CAST-HID] helper device state connected=\(connected)")
         guard let onDeviceState else { return }
         DispatchQueue.main.async {
             onDeviceState(connected)

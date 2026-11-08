@@ -1466,22 +1466,122 @@ private struct KeyboardEventCaptureView: NSViewRepresentable {
     }
 }
 
+private func keyboardCaptureTapCallback(
+    proxy: CGEventTapProxy,
+    type: CGEventType,
+    event: CGEvent,
+    context: UnsafeMutableRawPointer?
+) -> Unmanaged<CGEvent>? {
+    guard let context else { return Unmanaged.passUnretained(event) }
+    let view = Unmanaged<KeyboardCaptureNSView>
+        .fromOpaque(context)
+        .takeUnretainedValue()
+    return view.handleTapEvent(type: type, event: event)
+}
+
+/// 录制快捷键的视图。
+///
+/// 系统级组合键（例如「调度中心」的 ⌃← / ⌃→）会被 WindowServer 在
+/// `keyDown` 交给视图之前就消费掉，普通 `NSView.keyDown` 根本收不到。
+/// 录制期间装一个 session 级 CGEventTap 提前截获并吞掉按键事件，
+/// 这样既能录到组合键，也不会触发系统的左右切换桌面。
 private final class KeyboardCaptureNSView: NSView {
     var onCapture: ((RemoteCustomShortcut) -> Void)?
+    private var eventTap: CFMachPort?
+    private var runLoopSource: CFRunLoopSource?
 
     override var acceptsFirstResponder: Bool { true }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.window?.makeFirstResponder(self)
+        guard window != nil else {
+            removeEventTap()
+            return
         }
+        window?.makeFirstResponder(self)
+        installEventTap()
+    }
+
+    deinit {
+        removeEventTap()
     }
 
     override func keyDown(with event: NSEvent) {
-        guard !event.isARepeat else { return }
+        guard eventTap == nil, !event.isARepeat else { return }
         onCapture?(Self.shortcut(from: event))
+    }
+
+    fileprivate func handleTapEvent(
+        type: CGEventType,
+        event: CGEvent
+    ) -> Unmanaged<CGEvent>? {
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            if let eventTap { CGEvent.tapEnable(tap: eventTap, enable: true) }
+            return Unmanaged.passUnretained(event)
+        }
+        guard type == .keyDown || type == .keyUp else {
+            return Unmanaged.passUnretained(event)
+        }
+        if type == .keyDown,
+           let nsEvent = NSEvent(cgEvent: event),
+           !nsEvent.isARepeat {
+            let shortcut = Self.shortcut(from: nsEvent)
+            print("[RECORD] captured \(shortcut.label) flags=\(shortcut.flags)")
+            onCapture?(shortcut)
+        }
+        // 返回 nil 表示吞掉事件：既不触发系统快捷键，也不会把按键送进 App。
+        return nil
+    }
+
+    private func installEventTap() {
+        guard eventTap == nil else { return }
+        guard AXIsProcessTrusted() else {
+            print("[RECORD] accessibility not granted; fallback to keyDown")
+            return
+        }
+        let mask = (1 << CGEventType.keyDown.rawValue)
+            | (1 << CGEventType.keyUp.rawValue)
+        let context = Unmanaged.passUnretained(self).toOpaque()
+        // HID 级最早能截到按键；若系统拒绝（缺少辅助功能权限等），
+        // 退到 session 级再试一次，最后才退回 NSView.keyDown。
+        let locations: [CGEventTapLocation] = [.cghidEventTap, .cgSessionEventTap]
+        var chosenLocation: CGEventTapLocation?
+        for location in locations {
+            if let tap = CGEvent.tapCreate(
+                tap: location,
+                place: .headInsertEventTap,
+                options: .defaultTap,
+                eventsOfInterest: CGEventMask(mask),
+                callback: keyboardCaptureTapCallback,
+                userInfo: context
+            ) {
+                eventTap = tap
+                chosenLocation = location
+                break
+            }
+        }
+        guard let tap = eventTap else {
+            print("[RECORD] event tap unavailable; fallback to keyDown")
+            return
+        }
+        print(
+            "[RECORD] event tap installed at " +
+            (chosenLocation == .cghidEventTap ? "hid" : "session")
+        )
+        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        runLoopSource = source
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CGEvent.tapEnable(tap: tap, enable: true)
+    }
+
+    private func removeEventTap() {
+        if let eventTap { CGEvent.tapEnable(tap: eventTap, enable: false) }
+        if let runLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
+        }
+        runLoopSource = nil
+        if let eventTap { CFMachPortInvalidate(eventTap) }
+        eventTap = nil
     }
 
     private static func shortcut(from event: NSEvent) -> RemoteCustomShortcut {

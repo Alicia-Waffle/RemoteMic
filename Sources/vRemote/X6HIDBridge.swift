@@ -80,7 +80,11 @@ final class X6HIDBridge {
     private var deferredVoiceRelease: DispatchWorkItem?
     private var voiceReportCount = 0
     private var voiceByteCount = 0
-    private var remappingEnabled = RemoteMappingStore.shared.isEnabled(.x6)
+    private var remappingEnabled: Bool {
+        RemoteMappingStore.shared.isEnabled(.x6)
+    }
+    /// 最近一次 `start()` 真正生效的开关状态；用于热切换时判断是否需要重新 seize。
+    private var appliedRemapping: Bool?
     private var mappedKeyboardUsages = Set<UInt8>()
     private var passthroughKeyboardUsages = Set<UInt8>()
     private var lastKeyboardModifiers: UInt8 = 0
@@ -88,13 +92,13 @@ final class X6HIDBridge {
     private var lastMouseButtons: UInt8 = 0
 
     func setRemappingEnabled(_ enabled: Bool) {
-        guard remappingEnabled != enabled else { return }
-        remappingEnabled = enabled
+        guard appliedRemapping != enabled else { return }
         start()
     }
 
     func start() {
         stop()
+        appliedRemapping = remappingEnabled
         let manager = IOHIDManagerCreate(
             kCFAllocatorDefault,
             IOOptionBits(kIOHIDOptionsTypeNone)
@@ -166,6 +170,7 @@ final class X6HIDBridge {
             }
         }
         activeDevice = nil
+        appliedRemapping = nil
         mappedKeyboardUsages.removeAll()
         passthroughKeyboardUsages.removeAll()
         lastKeyboardModifiers = 0

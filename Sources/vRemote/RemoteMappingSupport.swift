@@ -118,6 +118,9 @@ enum RemoteMappingTarget: String, CaseIterable, Identifiable, Codable, Hashable 
     case arrowDown
     case arrowLeft
     case arrowRight
+    case scrollUp
+    case scrollDown
+    case focusInput
     case returnKey
     case escape
     case deleteBackward
@@ -149,6 +152,9 @@ enum RemoteMappingTarget: String, CaseIterable, Identifiable, Codable, Hashable 
         case .arrowDown: L10n.text("方向下", "Down Arrow")
         case .arrowLeft: L10n.text("方向左", "Left Arrow")
         case .arrowRight: L10n.text("方向右", "Right Arrow")
+        case .scrollUp: L10n.text("向上滚动", "Scroll Up")
+        case .scrollDown: L10n.text("向下滚动", "Scroll Down")
+        case .focusInput: L10n.text("聚焦输入框", "Focus Input")
         case .returnKey: "Return"
         case .escape: "Escape"
         case .deleteBackward: "Delete"
@@ -208,6 +214,14 @@ enum RemoteMappingTarget: String, CaseIterable, Identifiable, Codable, Hashable 
 
     func post(isDown: Bool) {
         guard self != .disabled, self != .doubaoVoice else { return }
+        if self == .scrollUp || self == .scrollDown {
+            if isDown { RemoteOneShot.scroll(lines: self == .scrollUp ? 3 : -3) }
+            return
+        }
+        if self == .focusInput {
+            if isDown { RemoteOneShot.focusInput() }
+            return
+        }
         if let keyboard {
             let source = CGEventSource(stateID: .hidSystemState)
             guard let event = CGEvent(
@@ -249,6 +263,13 @@ struct RemoteCustomShortcut: Codable, Hashable {
     let flags: UInt64
     let label: String
 
+    /// 方向键 / Home / End / Page Up / Page Down 在真机上属于
+    /// “secondary function”按键，硬件事件的 flags 会带 NX_SECONDARYFNMASK。
+    private static let secondaryFunctionKeyCodes: Set<UInt16> = [
+        0x7B, 0x7C, 0x7D, 0x7E,
+        0x73, 0x77, 0x74, 0x79,
+    ]
+
     func post(isDown: Bool) {
         let source = CGEventSource(stateID: .hidSystemState)
         guard let event = CGEvent(
@@ -256,7 +277,15 @@ struct RemoteCustomShortcut: Codable, Hashable {
             virtualKey: CGKeyCode(keyCode),
             keyDown: isDown
         ) else { return }
-        event.flags = CGEventFlags(rawValue: flags)
+        var eventFlags = CGEventFlags(rawValue: flags)
+        // 系统「切换桌面」等符号热键按 flags 位精确匹配。合成的 ⌃← 若不带
+        // Fn 位，WindowServer 不认这个组合，会把它当普通 ⌃← 交给前台 App
+        // （表现是移动光标而不是切桌面）。补上与硬件一致的 Fn 位。
+        if eventFlags.contains(.maskControl),
+           Self.secondaryFunctionKeyCodes.contains(keyCode) {
+            eventFlags.insert(.maskSecondaryFn)
+        }
+        event.flags = eventFlags
         event.setIntegerValueField(.eventSourceUserData, value: Key.syntheticMarker)
         event.post(tap: .cghidEventTap)
     }
@@ -281,6 +310,80 @@ struct RemoteAppLaunch: Codable, Hashable {
                 print("[CAST-MAP] 打开 \(label) 失败: \(error.localizedDescription)")
             }
         }
+    }
+}
+
+/// 出厂默认按键映射（Chromecast 遥控器）。
+///
+/// 用 `UserDefaults.register` 注册，而不是在首次启动时写盘：
+/// - 新装用户开箱即用这套映射；
+/// - 已有用户手动改过的值优先级更高，不会被覆盖；
+/// - 用户在控制台里改回默认值时仍然可读到这些注册值。
+enum RemoteMappingDefaults {
+    static func values() -> [String: Any] {
+        var values: [String: Any] = [
+            "remoteMappingEnabled.chromecast": true,
+            "remoteMapping.chromecast.03": RemoteMappingTarget.scrollUp.rawValue,
+            "remoteMapping.chromecast.03.double": RemoteMappingTarget.disabled.rawValue,
+            "remoteMapping.chromecast.04": RemoteMappingTarget.scrollDown.rawValue,
+            "remoteMapping.chromecast.05": RemoteMappingTarget.custom.rawValue,
+            "remoteMapping.chromecast.05.double": RemoteMappingTarget.arrowLeft.rawValue,
+            "remoteMapping.chromecast.06": RemoteMappingTarget.custom.rawValue,
+            "remoteMapping.chromecast.06.double": RemoteMappingTarget.arrowRight.rawValue,
+            "remoteMapping.chromecast.07": RemoteMappingTarget.returnKey.rawValue,
+            "remoteMapping.chromecast.07.long": RemoteMappingTarget.space.rawValue,
+            "remoteMapping.chromecast.0B": RemoteMappingTarget.deleteBackward.rawValue,
+            "remoteMapping.chromecast.0B.double": RemoteMappingTarget.disabled.rawValue,
+            "remoteMapping.chromecast.0B.long": RemoteMappingTarget.focusInput.rawValue,
+            "remoteMapping.chromecast.01": RemoteMappingTarget.openApplication.rawValue,
+            "remoteMapping.chromecast.0E": RemoteMappingTarget.openApplication.rawValue,
+            "remoteMapping.chromecast.0F": RemoteMappingTarget.openApplication.rawValue,
+            "remoteMapping.chromecast.11": RemoteMappingTarget.openApplication.rawValue,
+        ]
+
+        let shortcuts: [String: RemoteCustomShortcut] = [
+            "remoteCustomMapping.chromecast.05": RemoteCustomShortcut(
+                keyCode: 0x7B,
+                flags: CGEventFlags.maskControl.rawValue,
+                label: "⌃←"
+            ),
+            "remoteCustomMapping.chromecast.06": RemoteCustomShortcut(
+                keyCode: 0x7C,
+                flags: CGEventFlags.maskControl.rawValue,
+                label: "⌃→"
+            ),
+        ]
+        let apps: [String: RemoteAppLaunch] = [
+            "remoteAppMapping.chromecast.01": RemoteAppLaunch(
+                bundleID: "cn.trae.app",
+                label: "TRAE CN"
+            ),
+            "remoteAppMapping.chromecast.0E": RemoteAppLaunch(
+                bundleID: "com.google.Chrome",
+                label: "Google Chrome"
+            ),
+            "remoteAppMapping.chromecast.0F": RemoteAppLaunch(
+                bundleID: "com.openai.codex",
+                label: "ChatGPT"
+            ),
+            "remoteAppMapping.chromecast.11": RemoteAppLaunch(
+                bundleID: "local.simaqingfeng.vRemote",
+                label: "RemoteMic"
+            ),
+        ]
+
+        let encoder = JSONEncoder()
+        for (key, shortcut) in shortcuts {
+            if let data = try? encoder.encode(shortcut) {
+                values[key] = data
+            }
+        }
+        for (key, app) in apps {
+            if let data = try? encoder.encode(app) {
+                values[key] = data
+            }
+        }
+        return values
     }
 }
 

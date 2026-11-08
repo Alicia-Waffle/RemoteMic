@@ -60,7 +60,11 @@ final class ChromecastRemoteHIDBridge {
 
     private var manager: IOHIDManager?
     private var activeDevice: IOHIDDevice?
-    private var remappingEnabled = RemoteMappingStore.shared.isEnabled(.chromecast)
+    private var remappingEnabled: Bool {
+        RemoteMappingStore.shared.isEnabled(.chromecast)
+    }
+    /// 最近一次 `start()` 真正生效的开关状态；用于热切换时判断是否需要重新 seize。
+    private var appliedRemapping: Bool?
     private var lastButtonID: String?
     private var helperClient: ChromecastHIDHelperClient?
     private let gestureRecognizer = RemoteGestureRecognizer()
@@ -106,6 +110,7 @@ final class ChromecastRemoteHIDBridge {
 
     func start() {
         stop()
+        appliedRemapping = remappingEnabled
         guard remappingEnabled else {
             // Without remapping there is nothing to map, and macOS will not
             // deliver reports to an unprivileged observer. Keep the in-process
@@ -116,7 +121,16 @@ final class ChromecastRemoteHIDBridge {
         // macOS returns kIOReturnNotPrivileged for a keyboard-class HID device
         // opened with kIOHIDOptionsTypeSeizeDevice by a non-privileged
         // process, so a root helper has to own the collection.
-        ChromecastHIDHelperClient.probe { [weak self] client in
+        ChromecastHIDHelperClient.probe(
+            onButton: { [weak self] usageHex, isDown in
+                self?.apply(buttonID: usageHex, isDown: isDown)
+            },
+            onDeviceState: { [weak self] connected in
+                guard let self else { return }
+                print("[CAST-HID] helper device \(connected ? "connected" : "disconnected")")
+                self.onConnectionChanged?(connected)
+            }
+        ) { [weak self] client in
             guard let self else { return }
             guard let client else {
                 print(
@@ -127,14 +141,6 @@ final class ChromecastRemoteHIDBridge {
                 return
             }
             self.helperClient = client
-            client.onButton = { [weak self] usageHex, isDown in
-                self?.apply(buttonID: usageHex, isDown: isDown)
-            }
-            client.onDeviceState = { [weak self] connected in
-                guard let self else { return }
-                print("[CAST-HID] helper device \(connected ? "connected" : "disconnected")")
-                self.onConnectionChanged?(connected)
-            }
             print("[CAST-HID] privileged helper active")
         }
     }
@@ -200,6 +206,7 @@ final class ChromecastRemoteHIDBridge {
     func stop() {
         activeDevice = nil
         lastButtonID = nil
+        appliedRemapping = nil
 
         gestureRecognizer.cancelPending()
 
@@ -220,8 +227,7 @@ final class ChromecastRemoteHIDBridge {
     }
 
     func setRemappingEnabled(_ enabled: Bool) {
-        guard remappingEnabled != enabled else { return }
-        remappingEnabled = enabled
+        guard appliedRemapping != enabled else { return }
         start()
     }
 

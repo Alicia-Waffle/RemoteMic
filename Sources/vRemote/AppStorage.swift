@@ -7,6 +7,7 @@ enum AppStorage {
     static let remoteInputEnabledKey = "remoteInputEnabled"
     static let macCaptureAlwaysOnKey = "macCaptureAlwaysOn"
     static let inputTriggerKeyKey = "inputTriggerKey"
+    static let showDockIconKey = "showDockIcon"
 
     static let logsDirectory: URL = {
         FileManager.default.homeDirectoryForCurrentUser
@@ -36,7 +37,9 @@ enum AppStorage {
             remoteInputEnabledKey: true,
             macCaptureAlwaysOnKey: false,
             inputTriggerKeyKey: InputTriggerKey.option.rawValue,
+            showDockIconKey: true,
         ])
+        UserDefaults.standard.register(defaults: RemoteMappingDefaults.values())
         ensureDirectory(logsDirectory)
         ensureDirectory(applicationSupportDirectory)
         ensureDirectory(recordingsDirectory)
@@ -78,6 +81,13 @@ enum AppStorage {
         set {
             UserDefaults.standard.set(newValue.rawValue, forKey: inputTriggerKeyKey)
         }
+    }
+
+    /// 默认显示 Dock 图标（与 SayAll 一致）：`.regular` 激活策略让窗口
+    /// 走标准 App 的切换 Space 路径，避免「有时叠在全屏 App 之上、有时又不出现」。
+    static var showDockIcon: Bool {
+        get { UserDefaults.standard.bool(forKey: showDockIconKey) }
+        set { UserDefaults.standard.set(newValue, forKey: showDockIconKey) }
     }
 
     static func ensureDirectory(_ url: URL) {

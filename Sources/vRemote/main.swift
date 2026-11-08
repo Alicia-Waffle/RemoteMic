@@ -26,6 +26,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private var headerLabel: NSMenuItem!
     private var launchAtLoginItem: NSMenuItem!
+    private var showDockIconItem: NSMenuItem!
     private var loggingToggleItem: NSMenuItem!
     private var logHeaderItem: NSMenuItem!
     private var recordingToggleItem: NSMenuItem!
@@ -67,8 +68,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     )
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory)
         AppStorage.prepare()
+        applyActivationPolicy()
         LaunchAtLogin.refreshPathIfNeeded()
         AppAnalytics.configure()
         // Keep one continuous diagnostic history while X6 is being tuned.
@@ -344,6 +345,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         launchItem.target = self
         submenu.addItem(launchItem)
         launchAtLoginItem = launchItem
+
+        let dockIconItem = NSMenuItem(
+            title: L10n.text("显示 Dock 图标", "Show Dock icon"),
+            action: #selector(toggleShowDockIcon),
+            keyEquivalent: ""
+        )
+        dockIconItem.target = self
+        submenu.addItem(dockIconItem)
+        showDockIconItem = dockIconItem
 
         submenu.addItem(makeLanguageMenu())
 
@@ -656,9 +666,20 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func refreshMenuState() {
         launchAtLoginItem?.state = LaunchAtLogin.isEnabled ? .on : .off
+        showDockIconItem?.state = AppStorage.showDockIcon ? .on : .off
         loggingToggleItem?.state = Log.isEnabled ? .on : .off
         recordingToggleItem?.state = AppStorage.recordingEnabled ? .on : .off
         refreshSizeLabels()
+    }
+
+    private func applyActivationPolicy() {
+        NSApp.setActivationPolicy(AppStorage.showDockIcon ? .regular : .accessory)
+    }
+
+    @objc private func toggleShowDockIcon() {
+        AppStorage.showDockIcon.toggle()
+        applyActivationPolicy()
+        refreshMenuState()
     }
 
     private func refreshSizeLabels() {

@@ -52,16 +52,26 @@ final class HelperService: NSObject, HIDHelperServiceProtocol {
     private static let vendorID: Int = 0x18D1
     private static let productID: Int = 0x9450
 
-    private let manager: IOHIDManager
+    private var manager: IOHIDManager?
     private var subscribers: [ObjectIdentifier: NSXPCConnection] = [:]
     private var isSeized = false
     private var deviceConnected = false
     private var lastButtonID: String?
 
     override init() {
-        manager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
         super.init()
+    }
 
+    /// 每次 seize 都重建 manager。
+    ///
+    /// IOHIDManager 在 close 之后再次 open 并不总能重新匹配蓝牙 HID 设备，
+    /// 会出现「seize 成功但收不到任何按键报告」的状态（真机复现过）。
+    /// 重建 manager 可以让匹配和报告链路每次都从干净状态开始。
+    private func makeManager() -> IOHIDManager {
+        let manager = IOHIDManagerCreate(
+            kCFAllocatorDefault,
+            IOOptionBits(kIOHIDOptionsTypeNone)
+        )
         IOHIDManagerSetDeviceMatching(
             manager,
             [
@@ -78,11 +88,7 @@ final class HelperService: NSObject, HIDHelperServiceProtocol {
             CFRunLoopGetMain(),
             CFRunLoopMode.commonModes.rawValue
         )
-
-        if let devices = IOHIDManagerCopyDevices(manager) as? Set<IOHIDDevice>,
-           !devices.isEmpty {
-            deviceConnected = true
-        }
+        return manager
     }
 
     // MARK: - HIDHelperServiceProtocol
@@ -143,8 +149,16 @@ final class HelperService: NSObject, HIDHelperServiceProtocol {
 
     private func seize() -> Bool {
         guard !isSeized else { return true }
+        let manager = makeManager()
+        self.manager = manager
         let result = IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeSeizeDevice))
         guard result == kIOReturnSuccess else {
+            IOHIDManagerUnscheduleFromRunLoop(
+                manager,
+                CFRunLoopGetMain(),
+                CFRunLoopMode.commonModes.rawValue
+            )
+            self.manager = nil
             helperLog(
                 "seize failed: " + String(format: "0x%08X", UInt32(bitPattern: result)) +
                 " (euid=\(geteuid()); the helper must run as root)"
@@ -152,14 +166,28 @@ final class HelperService: NSObject, HIDHelperServiceProtocol {
             return false
         }
         isSeized = true
-        helperLog("seized Chromecast Remote HID collection (VID=0x18D1 PID=0x9450)")
+        if let devices = IOHIDManagerCopyDevices(manager) as? Set<IOHIDDevice> {
+            deviceConnected = !devices.isEmpty
+        }
+        helperLog(
+            "seized Chromecast Remote HID collection " +
+            "(VID=0x18D1 PID=0x9450) deviceConnected=\(deviceConnected)"
+        )
         return true
     }
 
     private func releaseDevice() {
         guard isSeized else { return }
         lastButtonID = nil
-        IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone))
+        if let manager {
+            IOHIDManagerUnscheduleFromRunLoop(
+                manager,
+                CFRunLoopGetMain(),
+                CFRunLoopMode.commonModes.rawValue
+            )
+            IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone))
+        }
+        manager = nil
         isSeized = false
         helperLog("released Chromecast Remote HID collection")
     }
