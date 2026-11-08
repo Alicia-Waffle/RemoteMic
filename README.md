@@ -137,9 +137,9 @@ Chromecast Remote 已实现语音键双模式：短按第一次打开、第二�
 - 启用映射后拦截设备原始动作，再由 RemoteMic 发送所选键盘、媒体键或自定义快捷键；关闭映射即可恢复系统原行为。
 - 主控制台去掉 X6 专属措辞，X6 与 Chromecast Remote 可以同时连接。
 
-![RemoteMic 1.4.3 音频控制台](docs/assets/screenshots/remotemic-audio-1.4.3.png)
+![RemoteMic 1.4.3 音频控制台](https://theshadow178.github.io/RemoteMic/assets/screenshots/remotemic-audio-1.4.3.png)
 
-![RemoteMic 1.4.3 Chromecast 按键映射](docs/assets/screenshots/remotemic-mapping-chromecast-1.4.3.png)
+![RemoteMic 1.4.3 Chromecast 按键映射](https://theshadow178.github.io/RemoteMic/assets/screenshots/remotemic-mapping-chromecast-1.4.3.png)
 
 完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
@@ -151,7 +151,7 @@ RemoteMic 免费提供。制作不易，麻烦打个赏补偿一点我的 Token 
 
 | 微信 / WeChat | 支付宝 / Alipay |
 |---|---|
-| <img src="Resources/buymeacoffee/wechat-qr.png" alt="微信打赏二维码" width="220"> | <img src="Resources/buymeacoffee/alipay-qr.png" alt="支付宝打赏二维码" width="220"> |
+| <img src="https://theshadow178.github.io/RemoteMic/assets/donate/wechat-qr.png" alt="微信打赏二维码" width="220"> | <img src="https://theshadow178.github.io/RemoteMic/assets/donate/alipay-qr.png" alt="支付宝打赏二维码" width="220"> |
 
 ## 仓库与公开服务边界
 
