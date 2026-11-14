@@ -271,7 +271,12 @@ public sealed class AtvvSessionController : IAsyncDisposable
 
             case AtvvControlEvent.AudioStop stop:
                 Diagnostic?.Invoke(this, $"AUDIO_STOP reason=0x{stop.Reason:X2}");
-                FinishStreamLocally();
+                // A Chromecast short press ends its physical stream with
+                // reason 02 just before the coordinator opens the persistent
+                // host stream. Keep the route and queued speech alive across
+                // that hand-off so words spoken immediately after the press
+                // are not discarded before the recognizer is ready.
+                FinishStreamLocally(preserveAudioRoute: stop.Reason == 0x02);
                 AudioStopped?.Invoke(this, stop.Reason);
                 break;
 
@@ -280,9 +285,6 @@ public sealed class AtvvSessionController : IAsyncDisposable
                 {
                     _protocol.ApplyAudioSync(sync.Codec, sync.Sequence, sync.Predictor, sync.StepIndex);
                 }
-                Diagnostic?.Invoke(
-                    this,
-                    $"AUDIO_SYNC sequence={sync.Sequence} predictor={sync.Predictor} step={sync.StepIndex}");
                 break;
 
             case AtvvControlEvent.MicrophoneOpenError error:
@@ -360,10 +362,56 @@ public sealed class AtvvSessionController : IAsyncDisposable
         _audio.SetRemoteActive(this, true);
         StartKeepAlive();
         StreamingChanged?.Invoke(this, true);
-        AudioStarted?.Invoke(this, new AtvvAudioStarted(start.Reason, start.Codec, start.StreamId));
+        if (start.Reason == 0x03)
+        {
+            // A physical Chromecast voice-button press announces AUDIO_START
+            // before the host acknowledges it with MIC_OPEN. Publish the edge
+            // that wakes the target recognizer only after the command succeeds;
+            // otherwise the recognizer opens with no ADPCM stream behind it.
+            TrackBackground(
+                AcknowledgePhysicalAudioStartAsync(start, CurrentConnectionToken()),
+                "响应物理 AUDIO_START");
+        }
+        else
+        {
+            AudioStarted?.Invoke(
+                this,
+                new AtvvAudioStarted(start.Reason, start.Codec, start.StreamId));
+        }
         Diagnostic?.Invoke(
             this,
             $"AUDIO_START reason=0x{start.Reason:X2} stream={start.StreamId}");
+    }
+
+    private async Task AcknowledgePhysicalAudioStartAsync(
+        AtvvControlEvent.AudioStart start,
+        CancellationToken cancellationToken)
+    {
+        await _commands.WaitAsync(cancellationToken);
+        try
+        {
+            byte[] command;
+            lock (_stateGate)
+            {
+                if (_disposed || !_streaming)
+                {
+                    return;
+                }
+
+                command = _protocol.CreateMicrophoneOpenCommand();
+            }
+
+            await _transport.WriteCommandAsync(command, cancellationToken);
+            Diagnostic?.Invoke(this, "已响应物理 AUDIO_START 并发送 MIC_OPEN。");
+        }
+        finally
+        {
+            _commands.Release();
+        }
+
+        AudioStarted?.Invoke(
+            this,
+            new AtvvAudioStarted(start.Reason, start.Codec, start.StreamId));
     }
 
     private Task EnsureCapabilitiesRequested()
@@ -495,7 +543,9 @@ public sealed class AtvvSessionController : IAsyncDisposable
         }
     }
 
-    private bool FinishStreamLocally(long? expectedGeneration = null)
+    private bool FinishStreamLocally(
+        long? expectedGeneration = null,
+        bool preserveAudioRoute = false)
     {
         bool wasStreaming;
         lock (_stateGate)
@@ -513,7 +563,10 @@ public sealed class AtvvSessionController : IAsyncDisposable
         }
 
         StopKeepAlive();
-        _audio.SetRemoteActive(this, false);
+        if (!preserveAudioRoute)
+        {
+            _audio.SetRemoteActive(this, false);
+        }
         if (wasStreaming)
         {
             StreamingChanged?.Invoke(this, false);

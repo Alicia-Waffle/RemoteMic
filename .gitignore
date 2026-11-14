@@ -30,3 +30,6 @@ dotnet-sdk*.sha512
 Windows/artifacts/
 Windows/*.user
 Windows/*.suo
+Windows/Driver/**/x64/
+Windows/Driver/**/ARM64/
+*.obj

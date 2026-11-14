@@ -52,6 +52,7 @@
   <system:String x:Key="Ready">Ready</system:String>
   <system:String x:Key="Checking">Checking</system:String>
   <system:String x:Key="ObserveOnly">Observe only · original action is not blocked</system:String>
+  <system:String x:Key="HidDriverActive">Driver mode · raw remote reports available</system:String>
   <system:String x:Key="Recording">Recording</system:String>
   <system:String x:Key="CableMissing">Virtual microphone not found</system:String>
   <system:String x:Key="CableExternal">VB-CABLE available</system:String>

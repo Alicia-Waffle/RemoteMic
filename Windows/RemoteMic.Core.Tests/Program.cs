@@ -182,6 +182,14 @@ static void TestHidNormalizer()
         Assert.False(up.IsDown);
     }
 
+    // The REV0110 Windows filter rewrites the remote's eight-byte direct
+    // report into the three-byte descriptor format while retaining report ID 1.
+    Assert.True(normalizer.TryNormalize([0x01, 0x42, 0x00], out var translatedDown));
+    Assert.Equal("03", translatedDown.ButtonId);
+    Assert.True(translatedDown.IsDown);
+    Assert.True(normalizer.TryNormalize([0x01, 0x00, 0x00], out var translatedUp));
+    Assert.False(translatedUp.IsDown);
+
     Assert.True(normalizer.TryNormalize([0x01, 0x03, 0, 0, 0, 0, 0, 0], out var directDown));
     Assert.Equal("03", directDown.ButtonId);
     Assert.True(normalizer.TryNormalize([0x01, 0, 0, 0, 0, 0, 0, 0], out var directUp));
@@ -304,6 +312,19 @@ static void TestVoiceSessionCoordinator()
         supportsPhysicalHoldGesture: true);
     Assert.Is<VoiceSessionCommand.CloseAllRemotes>(staleCommands.Single());
     Assert.Equal(VoiceSessionPhase.Closed, stale.Phase);
+
+    var failedOpen = new VoiceSessionCoordinator();
+    var failedOpenCommands = new List<VoiceSessionCommand>();
+    failedOpen.CommandIssued += failedOpenCommands.Add;
+    failedOpen.RemoteAudioStarted(
+        SupportedRemoteId.Chromecast,
+        0x03,
+        start,
+        supportsPhysicalHoldGesture: true);
+    failedOpenCommands.Clear();
+    failedOpen.TargetRecordingChanged(false);
+    Assert.Equal(VoiceSessionPhase.Closed, failedOpen.Phase);
+    Assert.Is<VoiceSessionCommand.CloseAllRemotes>(failedOpenCommands.Single());
 
     var x6 = new VoiceSessionCoordinator();
     var x6Commands = new List<VoiceSessionCommand>();

@@ -4,7 +4,8 @@ public readonly record struct HidButtonEvent(string ButtonId, bool IsDown, ushor
 
 /// <summary>
 /// Normalizes both Chromecast HOGP report layouts observed on Windows:
-/// REV011b consumer reports (02 + little-endian 16-bit usage) and REV0110
+/// REV011b consumer reports (02 + little-endian 16-bit usage), translated
+/// REV0110 descriptor reports (01 + little-endian 16-bit usage), and REV0110
 /// direct reports (optional report id 01 + one-byte RemoteMic usage + zeros).
 /// A zero usage is a release for the last pressed button.
 /// </summary>
@@ -40,7 +41,7 @@ public sealed class ChromecastHidReportNormalizer
     public bool TryNormalize(ReadOnlySpan<byte> report, out HidButtonEvent buttonEvent)
     {
         buttonEvent = default;
-        if (report.Length == 3 && report[0] == 0x02)
+        if (report.Length == 3 && report[0] is 0x01 or 0x02)
         {
             var usage = (ushort)(report[1] | (report[2] << 8));
             return NormalizeConsumer(usage, out buttonEvent);

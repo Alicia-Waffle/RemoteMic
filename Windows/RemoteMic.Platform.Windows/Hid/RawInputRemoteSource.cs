@@ -239,20 +239,23 @@ public sealed class RawInputRemoteSource : IDisposable
 
     private static WindowsRemoteKind Classify(string path)
     {
-        if (path.Contains("VID_18D1&PID_9450", StringComparison.OrdinalIgnoreCase) ||
-            path.Contains("VID&0218D1_PID&9450", StringComparison.OrdinalIgnoreCase))
+        if (HasVidPid(path, "18D1", "9450"))
         {
             return WindowsRemoteKind.ChromecastVoiceRemote;
         }
 
-        if (path.Contains("VID_1D5A&PID_C081", StringComparison.OrdinalIgnoreCase) ||
-            path.Contains("VID&021D5A_PID&C081", StringComparison.OrdinalIgnoreCase))
+        if (HasVidPid(path, "1D5A", "C081"))
         {
             return WindowsRemoteKind.X6Remote;
         }
 
         return WindowsRemoteKind.Unknown;
     }
+
+    private static bool HasVidPid(string path, string vendorId, string productId) =>
+        path.Contains($"VID_{vendorId}&PID_{productId}", StringComparison.OrdinalIgnoreCase) ||
+        path.Contains($"VID&01{vendorId}_PID&{productId}", StringComparison.OrdinalIgnoreCase) ||
+        path.Contains($"VID&02{vendorId}_PID&{productId}", StringComparison.OrdinalIgnoreCase);
 
     private bool _disposed;
 

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
+using WinRT;
 using Windows.Devices.Enumeration;
 using Windows.Foundation;
 using Windows.Media;
@@ -51,6 +52,7 @@ public sealed class AudioGraphRouter : IAsyncDisposable
     public event EventHandler<double>? RemoteLevelChanged;
     public event EventHandler<double>? LocalLevelChanged;
     public event EventHandler<bool>? CaptureActivityChanged;
+    public event EventHandler<string>? Diagnostic;
 
     public bool IsRunning => _graph is not null;
     public bool IsRemoteActive
@@ -166,7 +168,13 @@ public sealed class AudioGraphRouter : IAsyncDisposable
             }
 
             remoteInput.QuantumStarted += OnRemoteQuantumStarted;
+            remoteInput.AudioFrameCompleted += OnRemoteAudioFrameCompleted;
             remoteInput.OutgoingGain = 0;
+            // Match the Microsoft AudioCreation frame-input pattern: keep the
+            // node stopped while the graph starts, then start it when a remote
+            // stream becomes active. This transition is what begins quantum
+            // requests on desktop AudioGraph hosts.
+            remoteInput.Stop();
             if (localInput is not null)
             {
                 localInput.OutgoingGain = 1;
@@ -242,8 +250,13 @@ public sealed class AudioGraphRouter : IAsyncDisposable
         if (remote is not null)
         {
             remote.OutgoingGain = effectiveActive && remoteEnabled ? 1 : 0;
-            if (!effectiveActive)
+            if (effectiveActive && remoteEnabled)
             {
+                remote.Start();
+            }
+            else
+            {
+                remote.Stop();
                 remote.DiscardQueuedFrames();
                 DrainRemoteQueue();
             }
@@ -297,6 +310,16 @@ public sealed class AudioGraphRouter : IAsyncDisposable
         if (remote is not null)
         {
             remote.OutgoingGain = enabled && remoteActive ? 1 : 0;
+            if (enabled && remoteActive)
+            {
+                remote.Start();
+            }
+            else
+            {
+                remote.Stop();
+                remote.DiscardQueuedFrames();
+                DrainRemoteQueue();
+            }
         }
         if (local is not null)
         {
@@ -375,6 +398,8 @@ public sealed class AudioGraphRouter : IAsyncDisposable
         }
 
         remote!.QuantumStarted -= OnRemoteQuantumStarted;
+        remote.AudioFrameCompleted -= OnRemoteAudioFrameCompleted;
+        remote.Stop();
         if (hadLocalMonitor)
         {
             graph.QuantumStarted -= OnGraphQuantumStarted;
@@ -393,21 +418,60 @@ public sealed class AudioGraphRouter : IAsyncDisposable
         AudioFrameInputNode sender,
         FrameInputNodeQuantumStartedEventArgs args)
     {
-        var requiredFrames = checked((int)args.RequiredSamples);
-        var sampleCount = requiredFrames * OutputChannels;
-        var byteCount = checked(sampleCount * sizeof(short));
-        using var frame = new AudioFrame((uint)byteCount);
-        using var buffer = frame.LockBuffer(AudioBufferAccessMode.Write);
-        using var reference = buffer.CreateReference();
-        ((IMemoryBufferByteAccess)reference).GetBuffer(out var data, out var capacity);
-
-        var destination = new Span<short>(data, Math.Min(sampleCount, checked((int)capacity / sizeof(short))));
-        for (var index = 0; index < destination.Length; index++)
+        AudioFrame? frame = null;
+        try
         {
-            destination[index] = _remoteSamples.TryDequeue(out var sample) ? sample : (short)0;
-        }
+            var requiredFrames = checked((int)args.RequiredSamples);
+            if (requiredFrames <= 0)
+            {
+                return;
+            }
 
-        sender.AddFrame(frame);
+            var sampleCount = checked(requiredFrames * OutputChannels);
+            var byteCount = checked(sampleCount * sizeof(short));
+            frame = new AudioFrame((uint)byteCount);
+            using (var buffer = frame.LockBuffer(AudioBufferAccessMode.Write))
+            using (var reference = buffer.CreateReference())
+            {
+                reference.As<IMemoryBufferByteAccess>().GetBuffer(
+                    out var data,
+                    out var capacity);
+                var destination = new Span<short>(
+                    data,
+                    Math.Min(sampleCount, checked((int)capacity / sizeof(short))));
+                for (var index = 0; index < destination.Length; index++)
+                {
+                    if (_remoteSamples.TryDequeue(out var sample))
+                    {
+                        destination[index] = sample;
+                    }
+                    else
+                    {
+                        destination[index] = 0;
+                    }
+                }
+            }
+
+            sender.AddFrame(frame);
+            frame = null; // AudioFrameCompleted owns disposal after submission.
+        }
+        catch (Exception exception)
+        {
+            Diagnostic?.Invoke(
+                this,
+                $"render error={exception.GetType().Name}: {exception.Message}");
+        }
+        finally
+        {
+            frame?.Dispose();
+        }
+    }
+
+    private static void OnRemoteAudioFrameCompleted(
+        AudioFrameInputNode sender,
+        AudioFrameCompletedEventArgs args)
+    {
+        args.Frame.Dispose();
     }
 
     private unsafe void OnGraphQuantumStarted(AudioGraph sender, object args)
@@ -425,7 +489,7 @@ public sealed class AudioGraphRouter : IAsyncDisposable
         using var frame = monitor.GetFrame();
         using var buffer = frame.LockBuffer(AudioBufferAccessMode.Read);
         using var reference = buffer.CreateReference();
-        ((IMemoryBufferByteAccess)reference).GetBuffer(out var data, out var capacity);
+        reference.As<IMemoryBufferByteAccess>().GetBuffer(out var data, out var capacity);
         var validBytes = Math.Min(buffer.Length, capacity);
         var samples = new ReadOnlySpan<short>(data, checked((int)validBytes / sizeof(short)));
         var peak = 0;
@@ -493,7 +557,9 @@ public sealed class AudioGraphRouter : IAsyncDisposable
 
     private static bool IsVirtualCableRenderEndpoint(DeviceInformation device) =>
         device.Name.Contains("RemoteMic Input", StringComparison.OrdinalIgnoreCase) ||
-        device.Name.Contains("CABLE Input", StringComparison.OrdinalIgnoreCase);
+        device.Name.Contains("CABLE Input", StringComparison.OrdinalIgnoreCase) ||
+        device.Name.Contains("CABLE In", StringComparison.OrdinalIgnoreCase) ||
+        device.Name.Contains("VB-Audio Virtual Cable", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsVirtualCableCaptureEndpoint(DeviceInformation device) =>
         device.Name.Contains("RemoteMic 2ch", StringComparison.OrdinalIgnoreCase) ||

@@ -12,6 +12,7 @@ $dotnet = if (Test-Path -LiteralPath $workspaceDotnet) { $workspaceDotnet } else
 $project = Join-Path $PSScriptRoot "RemoteMic.Windows\RemoteMic.Windows.csproj"
 $artifacts = Join-Path $PSScriptRoot "artifacts"
 $publishDirectory = Join-Path $artifacts "publish-$Runtime"
+$buildOutput = Join-Path $artifacts "build-$Runtime"
 $archive = Join-Path $artifacts "RemoteMic-Windows-$Runtime.zip"
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = "1"
 
@@ -46,7 +47,8 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     --verbosity minimal `
     -p:PublishReadyToRun=false `
     -p:DebugType=None `
-    -p:DebugSymbols=false
+    -p:DebugSymbols=false `
+    -p:BaseOutputPath="$buildOutput\"
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Copy-Item -LiteralPath (Join-Path $repositoryRoot "LICENSE") `

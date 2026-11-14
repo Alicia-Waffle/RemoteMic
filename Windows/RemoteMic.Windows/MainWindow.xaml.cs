@@ -30,10 +30,18 @@ public partial class MainWindow : Window
 {
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string RunValueName = "RemoteMic";
+    private static readonly object DiagnosticLogGate = new();
+    private static readonly string DiagnosticLogPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "RemoteMic",
+        "Logs",
+        "runtime.log");
 
     private readonly RemoteMicViewModel _viewModel = new();
     private readonly AudioGraphRouter _audioRouter = new();
+    private readonly CaptureSessionActivityMonitor _targetRecordingMonitor = new();
     private readonly RawInputRemoteSource _hidSource = new();
+    private readonly HidFilterRemoteSource _filterHidSource = new();
     private readonly ChromecastHidReportNormalizer _chromecastReports = new();
     private readonly X6HidReportNormalizer _x6Reports = new();
     private readonly X6VoiceGestureRecognizer _x6VoiceGestures = new();
@@ -56,6 +64,7 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
+        ResetDiagnosticLog();
         InitializeComponent();
         DataContext = _viewModel;
         Loaded += OnLoaded;
@@ -116,7 +125,11 @@ public partial class MainWindow : Window
             _voiceSession.RemoteHidShortPress(SupportedRemoteId.X6, DateTimeOffset.UtcNow);
         _x6VoiceGestures.LongPressEnded += () =>
             _voiceSession.RemoteHidLongPressEnded(SupportedRemoteId.X6);
-        _voiceSession.CommandIssued += command => _voiceCommands.Writer.TryWrite(command);
+        _voiceSession.CommandIssued += command =>
+        {
+            WriteDiagnostic($"VOICE command={command}");
+            _voiceCommands.Writer.TryWrite(command);
+        };
         _voiceCommandLoop = ProcessVoiceCommandsAsync(_lifetime.Token);
         _gestureTimer.Tick += (_, _) =>
         {
@@ -126,7 +139,25 @@ public partial class MainWindow : Window
         };
         _gestureTimer.Start();
 
-        _hidSource.ReportReceived += OnHidReport;
+        _filterHidSource.ReportReceived += OnHidReport;
+        _filterHidSource.DeviceConnectionChanged += (_, change) =>
+        {
+            SetRemoteLinkState(SupportedRemoteId.Chromecast, hidConnected: change.Connected);
+            _viewModel.UpdateStatus(
+                5,
+                change.Connected ? "HidDriverActive" : "ObserveOnly",
+                change.Connected ? StatusTone.Good : StatusTone.Warning);
+        };
+        _filterHidSource.Diagnostic += (_, message) => Debug.WriteLine(message);
+        _filterHidSource.Start();
+
+        _hidSource.ReportReceived += (sender, report) =>
+        {
+            if (!_filterHidSource.IsConnected)
+            {
+                OnHidReport(sender, report);
+            }
+        };
         _hidSource.DeviceConnectionChanged += (_, change) =>
         {
             var remoteId = change.Remote == WindowsRemoteKind.X6Remote
@@ -171,6 +202,16 @@ public partial class MainWindow : Window
                 _viewModel.SetLocalCaptureActive(active);
                 _viewModel.UpdateStatus(3, "SystemManaged", active ? StatusTone.Good : StatusTone.Warning);
             });
+        _audioRouter.Diagnostic += (_, message) =>
+            WriteDiagnostic($"AUDIO {message}");
+        _targetRecordingMonitor.ActivityChanged += (_, active) =>
+        {
+            WriteDiagnostic($"TARGET recording={active}");
+            _voiceSession.TargetRecordingChanged(active);
+        };
+        _targetRecordingMonitor.Diagnostic += (_, message) =>
+            WriteDiagnostic($"TARGET {message}");
+        _targetRecordingMonitor.Start();
 
         _viewModel.PropertyChanged += (_, args) =>
         {
@@ -199,7 +240,13 @@ public partial class MainWindow : Window
                 _viewModel.OutputEndpointName = route.VirtualCable?.Name ?? "RemoteMic 2ch";
                 var externalCable = route.VirtualCable?.Name.Contains(
                     "CABLE Input",
-                    StringComparison.OrdinalIgnoreCase) == true;
+                    StringComparison.OrdinalIgnoreCase) == true ||
+                    route.VirtualCable?.Name.Contains(
+                        "CABLE In",
+                        StringComparison.OrdinalIgnoreCase) == true ||
+                    route.VirtualCable?.Name.Contains(
+                        "VB-Audio Virtual Cable",
+                        StringComparison.OrdinalIgnoreCase) == true;
                 _viewModel.UpdateStatus(
                     1,
                     externalCable ? "CableExternal" : "CableAvailable",
@@ -288,7 +335,11 @@ public partial class MainWindow : Window
             return false;
         }
         var session = new AtvvSessionController(new AtvvGattClient(), _audioRouter);
-        session.Diagnostic += (_, message) => Debug.WriteLine($"[{candidate.Name}] {message}");
+        session.Diagnostic += (_, message) =>
+        {
+            Debug.WriteLine($"[{candidate.Name}] {message}");
+            WriteDiagnostic($"[{candidate.Name}] {message}");
+        };
         session.ConnectionChanged += (_, connected) =>
             SetRemoteLinkState(remoteId, bleConnected: connected);
         session.StreamingChanged += (_, streaming) =>
@@ -307,13 +358,23 @@ public partial class MainWindow : Window
         session.MicrophoneOpenFailed += (_, code) =>
             Debug.WriteLine($"[{candidate.Name}] MIC_OPEN error 0x{code:X4}");
         session.AudioStarted += (_, started) =>
+        {
+            WriteDiagnostic(
+                $"[{candidate.Name}] EVENT AudioStarted reason=0x{started.Reason:X2} " +
+                $"stream={started.StreamId} phase={_voiceSession.Phase}");
             _voiceSession.RemoteAudioStarted(
                 remoteId,
                 started.Reason,
                 DateTimeOffset.UtcNow,
                 supportsPhysicalHoldGesture: remoteId == SupportedRemoteId.Chromecast);
+        };
         session.AudioStopped += (_, reason) =>
+        {
+            WriteDiagnostic(
+                $"[{candidate.Name}] EVENT AudioStopped reason=0x{reason:X2} " +
+                $"phase={_voiceSession.Phase}");
             _voiceSession.RemoteAudioStopped(remoteId, reason, DateTimeOffset.UtcNow);
+        };
 
         _remoteSessionsById[remoteId] = session;
         try
@@ -329,6 +390,36 @@ public partial class MainWindow : Window
             SetRemoteLinkState(remoteId, bleConnected: false);
             await session.DisposeAsync();
             throw;
+        }
+    }
+
+    private static void ResetDiagnosticLog()
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(DiagnosticLogPath)!);
+            File.WriteAllText(
+                DiagnosticLogPath,
+                $"{DateTimeOffset.Now:O} RemoteMic runtime started{Environment.NewLine}");
+        }
+        catch
+        {
+        }
+    }
+
+    private static void WriteDiagnostic(string message)
+    {
+        try
+        {
+            lock (DiagnosticLogGate)
+            {
+                File.AppendAllText(
+                    DiagnosticLogPath,
+                    $"{DateTimeOffset.Now:O} {message}{Environment.NewLine}");
+            }
+        }
+        catch
+        {
         }
     }
 
@@ -425,11 +516,18 @@ public partial class MainWindow : Window
                     {
                         case VoiceSessionCommand.TriggerTap trigger when _actionExecutor is not null:
                             await _actionExecutor.SendKeyAsync(TriggerKey(), cancellationToken);
-                            // A real target-recording monitor is a Preview
-                            // follow-up. Until then, acknowledge only after
-                            // SendInput succeeds so the state cannot advance on
-                            // an injection failure.
-                            _voiceSession.TargetRecordingChanged(trigger.OpensRecognition);
+                            if (_targetRecordingMonitor.IsAvailable)
+                            {
+                                _ = VerifyTargetStateAfterTriggerAsync(
+                                    trigger.OpensRecognition,
+                                    cancellationToken);
+                            }
+                            else
+                            {
+                                // Keep non-Doubao targets usable when Windows
+                                // does not expose a capture session.
+                                _voiceSession.TargetRecordingChanged(trigger.OpensRecognition);
+                            }
                             break;
 
                         case VoiceSessionCommand.OpenRemote open
@@ -463,6 +561,23 @@ public partial class MainWindow : Window
                     Debug.WriteLine(exception);
                 }
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async Task VerifyTargetStateAfterTriggerAsync(
+        bool expectedRecording,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(800), cancellationToken);
+            var actual = _targetRecordingMonitor.IsRecording;
+            WriteDiagnostic(
+                $"TARGET verify expected={expectedRecording} actual={actual}");
+            _voiceSession.TargetRecordingChanged(actual);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -596,10 +711,12 @@ public partial class MainWindow : Window
 
     private WindowsKey TriggerKey() => _viewModel.VoiceTrigger switch
     {
-        "Ctrl" => WindowsKey.Control,
+        "Left Ctrl" => WindowsKey.LeftControl,
+        "Right Alt" => WindowsKey.RightAlt,
+        "Left Alt" => WindowsKey.LeftAlt,
         "Shift" => WindowsKey.Shift,
         "Win" => WindowsKey.LeftWindows,
-        _ => WindowsKey.Alt,
+        _ => WindowsKey.RightControl,
     };
 
     private MappingRowViewModel? FindMappingRow(string remoteId, string buttonId) =>
@@ -915,12 +1032,37 @@ public partial class MainWindow : Window
         }
 
         _runtimeStarted = false;
+        var requestedRemoteClose = false;
+        foreach (var session in _remoteSessions.ToArray())
+        {
+            if (!session.IsStreaming)
+            {
+                continue;
+            }
+
+            try
+            {
+                requestedRemoteClose = true;
+                await session.CloseMicrophoneAsync(CancellationToken.None);
+            }
+            catch (Exception exception)
+            {
+                WriteDiagnostic($"Shutdown MIC_CLOSE failed: {exception.Message}");
+            }
+        }
+        if (requestedRemoteClose)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(150));
+        }
+
         _lifetime.Cancel();
         _voiceCommands.Writer.TryComplete();
         _gestureTimer.Stop();
         _gestureRecognizer.CancelPending();
         _x6VoiceGestures.Reset();
+        _filterHidSource.Dispose();
         _hidSource.Dispose();
+        _targetRecordingMonitor.Dispose();
 
         if (_voiceCommandLoop is not null)
         {

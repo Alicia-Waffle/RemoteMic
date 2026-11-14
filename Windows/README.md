@@ -34,13 +34,15 @@ Two capabilities require signed Windows drivers for production-grade parity:
 1. A virtual capture endpoint named `RemoteMic 2ch` that accepts PCM from the
    app. The current preview can use separately installed VB-CABLE instead; the
    project does not bundle or redistribute VB-CABLE.
-2. A VID/PID-scoped HID lower filter that can suppress the original Chromecast
-   button report while mapping is enabled. The current Raw Input backend is an
-   observation backend: mapped actions are emitted, but Windows may also process
-   the original media/navigation action.
+2. A VID/PID-scoped HID upper filter plus VHF virtual keyboard. Driver source is
+   present under `Driver/`: it provides the fallback report path needed by
+   Windows builds that reserve the Consumer Control collection, and hardware-
+   level key reports for applications that reject `SendInput`.
 
-Unsigned kernel drivers are intentionally not shipped and users are never asked
-to disable Secure Boot or enable test-signing. See [Driver/README.md](Driver/README.md).
+Unsigned kernel drivers are intentionally not shipped in the normal app ZIP.
+Development-only build/sign/install scripts live in the Windows tree; enabling
+test-signing remains an explicit tester action and is never performed by the
+app. See [Driver/README.md](Driver/README.md).
 The preview EXE and ZIP are also not Authenticode-signed, so Windows may show a
 SmartScreen warning. A production release requires application code signing in
 addition to the two signed drivers.
@@ -54,6 +56,8 @@ addition to the two signed drivers.
   - X6 Remote `1D5A:C081`
 - For the preview audio route, install VB-CABLE yourself and select
   `CABLE Output` as the microphone in the target input method or meeting app.
+  On localized Windows installations, the playback side may appear as
+  `Speakers (VB-Audio Virtual Cable)` instead of the older `CABLE Input` name.
 - .NET 8 SDK to build. Packaged preview builds are self-contained.
 
 ## Build and test
@@ -64,6 +68,8 @@ From PowerShell at the repository root:
 ./Windows/run-self-tests.ps1
 ./Windows/build.ps1
 ./Windows/package.ps1 -Runtime win-x64
+# Requires VS 2022 Build Tools + WDK 26100:
+./Windows/build-drivers.ps1 -CodeAnalysis
 ```
 
 The package is written to `Windows/artifacts/RemoteMic-Windows-win-x64.zip`.
@@ -72,12 +78,12 @@ project MIT license and the .NET runtime license/third-party notices.
 
 ## Preview limitations
 
-- Until the signed HID filter exists, mapped Raw Input actions cannot suppress
-  the original Windows action from the same remote report.
-- The voice-session state machine currently acknowledges a successful
-  `SendInput` trigger as the intended target-recording state. A production build
-  still needs a WASAPI target-capture activity monitor to confirm that the input
-  method or meeting app actually started/stopped recording.
+- The driver projects build and pass static/INF validation, but still require
+  real-hardware Driver Verifier/HLK coverage and Microsoft signing before any
+  production distribution.
+- Target-recording confirmation currently monitors the default capture endpoint
+  for Doubao IME processes. Other input methods and meeting apps fall back to the
+  configured trigger state until their process identities are supported.
 - Built-in app-launch defaults work, but the full macOS fixed-text, arbitrary
   fixed-text and multi-step mapping editors are not yet ported. Arbitrary EXE
   selection is available for the app-launch action.

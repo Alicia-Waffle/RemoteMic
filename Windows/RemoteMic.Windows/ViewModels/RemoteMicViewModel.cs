@@ -27,7 +27,7 @@ public sealed class RemoteMicViewModel : ObservableObject
     private bool _localSolo;
     private bool _remoteSolo;
     private bool _captureAlwaysOn;
-    private string _voiceTrigger = "Alt";
+    private string _voiceTrigger = "Right Ctrl";
     private double _localLevel;
     private double _remoteLevel;
     private double _outputLevel;
@@ -69,7 +69,8 @@ public sealed class RemoteMicViewModel : ObservableObject
             new("openApp", "OpenApp"),
         ]);
 
-        TriggerKeys = new ObservableCollection<string>(["Alt", "Ctrl", "Shift", "Win"]);
+        TriggerKeys = new ObservableCollection<string>(
+            ["Right Ctrl", "Left Ctrl", "Right Alt", "Left Alt", "Shift", "Win"]);
         Devices = new ObservableCollection<RemoteDeviceViewModel>
         {
             CreateChromecast(),
@@ -424,7 +425,12 @@ public sealed class RemoteMicViewModel : ObservableObject
     private void LoadSettings()
     {
         var savedTrigger = SettingsStore.Read("VoiceTrigger");
-        if (savedTrigger is not null && TriggerKeys.Contains(savedTrigger))
+        if (savedTrigger is "Alt" or "Right Alt" or "Ctrl")
+        {
+            _voiceTrigger = "Right Ctrl";
+            SettingsStore.Write("VoiceTrigger", _voiceTrigger);
+        }
+        else if (savedTrigger is not null && TriggerKeys.Contains(savedTrigger))
         {
             _voiceTrigger = savedTrigger;
         }

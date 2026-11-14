@@ -205,6 +205,14 @@ public sealed class VoiceSessionCoordinator
             {
                 CompleteClosed();
             }
+            else if (!recording && _phase == VoiceSessionPhase.Opening)
+            {
+                // The toggle key was delivered but the target never opened its
+                // recording session. Return the remote to idle instead of
+                // leaving a persistent stream that inverts the next press.
+                CompleteClosed();
+                commands.Add(new VoiceSessionCommand.CloseAllRemotes());
+            }
             else if (!recording && _phase == VoiceSessionPhase.Open)
             {
                 CompleteClosed();

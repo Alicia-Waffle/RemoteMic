@@ -52,6 +52,7 @@
   <system:String x:Key="Ready">已就绪</system:String>
   <system:String x:Key="Checking">正在检测</system:String>
   <system:String x:Key="ObserveOnly">观察模式 · 原动作不拦截</system:String>
+  <system:String x:Key="HidDriverActive">驱动模式 · 原始遥控器报告可用</system:String>
   <system:String x:Key="Recording">正在录音</system:String>
   <system:String x:Key="CableMissing">未找到虚拟麦克风</system:String>
   <system:String x:Key="CableExternal">VB-CABLE 可用</system:String>

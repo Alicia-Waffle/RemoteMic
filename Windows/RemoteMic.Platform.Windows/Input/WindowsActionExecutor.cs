@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.ComponentModel;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -11,8 +12,10 @@ public enum WindowsKey : ushort
     Tab = 0x09,
     Enter = 0x0D,
     Shift = 0x10,
-    Control = 0x11,
-    Alt = 0x12,
+    LeftControl = 0xA2,
+    RightControl = 0xA3,
+    LeftAlt = 0xA4,
+    RightAlt = 0xA5,
     Escape = 0x1B,
     Space = 0x20,
     PageUp = 0x21,
@@ -58,8 +61,43 @@ public sealed class WindowsActionExecutor
                 "WindowsActionExecutor must be created on the WPF UI thread.");
     }
 
-    public Task SendKeyAsync(WindowsKey key, CancellationToken cancellationToken = default) =>
-        SendShortcutAsync([key], cancellationToken);
+    public async Task SendKeyAsync(
+        WindowsKey key,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        using var virtualKeyboard = VirtualHidKeyboard.TryOpen();
+        var usedVirtualKeyboard = virtualKeyboard?.TrySubmit(key, keyUp: false) == true;
+        if (!usedVirtualKeyboard)
+        {
+            Send([KeyboardInput(key, keyUp: false)]);
+        }
+        try
+        {
+            // Some global-shortcut handlers debounce the near-simultaneous
+            // down/up pair produced by one SendInput call. A short human-like
+            // hold is still a tap, while remaining visible to those handlers.
+            await Task.Delay(TimeSpan.FromMilliseconds(120), cancellationToken);
+        }
+        finally
+        {
+            // Never leave a modifier logically held when shutdown cancels the
+            // delay between key-down and key-up.
+            if (usedVirtualKeyboard)
+            {
+                if (virtualKeyboard?.TrySubmit(key, keyUp: true) != true)
+                {
+                    throw new Win32Exception(
+                        Marshal.GetLastWin32Error(),
+                        "RemoteMic 虚拟 HID 键盘无法提交按键释放报告。");
+                }
+            }
+            else
+            {
+                Send([KeyboardInput(key, keyUp: true)]);
+            }
+        }
+    }
 
     public Task SendShortcutAsync(
         IReadOnlyList<WindowsKey> keys,
@@ -95,7 +133,7 @@ public sealed class WindowsActionExecutor
         });
         var injectedSequence = GetClipboardSequenceNumber();
 
-        await SendShortcutAsync([WindowsKey.Control, WindowsKey.V], cancellationToken);
+        await SendShortcutAsync([WindowsKey.LeftControl, WindowsKey.V], cancellationToken);
         await Task.Delay(TimeSpan.FromMilliseconds(300), cancellationToken);
 
         if (snapshot.Captured && GetClipboardSequenceNumber() == injectedSequence)
@@ -120,7 +158,7 @@ public sealed class WindowsActionExecutor
         // Browsers, editors and most desktop chat clients expose their primary
         // input/search surface through Ctrl+L. Multi-step actions may override
         // this with an explicitly recorded shortcut for app-specific behavior.
-        SendShortcutAsync([WindowsKey.Control, WindowsKey.L], cancellationToken);
+        SendShortcutAsync([WindowsKey.LeftControl, WindowsKey.L], cancellationToken);
 
     public Task ShowDesktopAsync(CancellationToken cancellationToken = default) =>
         SendShortcutAsync([WindowsKey.LeftWindows, (WindowsKey)0x44], cancellationToken);
@@ -263,18 +301,37 @@ public sealed class WindowsActionExecutor
         return completion.Task;
     }
 
-    private static INPUT KeyboardInput(WindowsKey key, bool keyUp) => new()
+    private static INPUT KeyboardInput(WindowsKey key, bool keyUp)
     {
-        type = InputKeyboard,
-        union = new INPUTUNION
+        var scanCode = key switch
         {
-            keyboard = new KEYBDINPUT
+            WindowsKey.RightControl => (ushort)0x1D,
+            WindowsKey.RightAlt => (ushort)0x38,
+            _ => (ushort)0,
+        };
+        var useExtendedScanCode = scanCode != 0;
+        var flags = useExtendedScanCode
+            ? KeyEventExtendedKey | KeyEventScanCode
+            : 0;
+        if (keyUp)
+        {
+            flags |= KeyEventKeyUp;
+        }
+
+        return new INPUT
+        {
+            type = InputKeyboard,
+            union = new INPUTUNION
             {
-                virtualKey = (ushort)key,
-                flags = keyUp ? KeyEventKeyUp : 0,
+                keyboard = new KEYBDINPUT
+                {
+                    virtualKey = useExtendedScanCode ? (ushort)0 : (ushort)key,
+                    scanCode = scanCode,
+                    flags = flags,
+                },
             },
-        },
-    };
+        };
+    }
 
     private static void Send(INPUT[] inputs)
     {
@@ -291,7 +348,9 @@ public sealed class WindowsActionExecutor
 
     private const uint InputMouse = 0;
     private const uint InputKeyboard = 1;
+    private const uint KeyEventExtendedKey = 0x0001;
     private const uint KeyEventKeyUp = 0x0002;
+    private const uint KeyEventScanCode = 0x0008;
     private const uint MouseEventWheel = 0x0800;
 
     [StructLayout(LayoutKind.Sequential)]

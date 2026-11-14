@@ -1,8 +1,8 @@
 # Windows driver boundary
 
 RemoteMic deliberately keeps kernel code outside the desktop application. The
-application is usable with an external virtual cable and Raw Input, but complete
-feature parity needs two Microsoft-signed packages.
+application is usable with an external virtual cable and Raw Input where Windows
+exposes the remote, but complete feature parity needs Microsoft-signed drivers.
 
 ## Virtual audio capture driver
 
@@ -22,6 +22,32 @@ be submitted for Microsoft attestation or WHQL signing. A test-signed build must
 never be distributed to normal users.
 
 ## Chromecast HID filter
+
+The Windows tree now contains two x64 driver projects:
+
+- `RemoteMic.HidFilter`: a device-specific upper filter extension for the
+  Chromecast Consumer Control collection. It copies completed reports to a
+  sideband raw PDO and forwards the original read unchanged.
+- `RemoteMic.VirtualHid`: a root-enumerated VHF boot keyboard used for target
+  applications, such as input methods, that reject `SendInput` events.
+
+Build both with `Windows/build-drivers.ps1 -CodeAnalysis`. Package unsigned
+test outputs with `Windows/package-test-drivers.ps1`; create a local development
+certificate and sign them with `Windows/sign-test-drivers.ps1`.
+
+For an explicitly designated development machine only, the staged sequence is:
+
+1. Run `Windows/enable-driver-test-mode.ps1 -ConfirmRisk` from elevated
+   PowerShell, then reboot. The script refuses to alter Secure Boot.
+2. Run `Windows/install-test-drivers.ps1 -ConfirmRisk` from elevated PowerShell,
+   then reboot again.
+3. Verify the remote and run Driver Verifier against only
+   `RemoteMicVirtualHid.sys` and `RemoteMicHidFilter.sys`—never `/all`.
+
+These packages are development artifacts only. Do not distribute or install
+them on normal user machines until they pass Driver Verifier/HLK and Microsoft
+attestation or WHQL signing. Enabling Windows test-signing changes the machine's
+boot security posture and must be an explicit tester action.
 
 Required production behavior:
 

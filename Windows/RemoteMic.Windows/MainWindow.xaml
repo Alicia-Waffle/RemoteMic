@@ -327,12 +327,17 @@
                          Foreground="{DynamicResource SecondaryBrush}" FontSize="11" />
               <StackPanel Grid.Row="2" Margin="0,18,0,0">
                 <Grid Margin="0,0,0,9">
-                  <StackPanel Orientation="Horizontal">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel Grid.Column="0" Orientation="Horizontal">
                     <Ellipse Width="8" Height="8" Fill="{DynamicResource AmberBrush}" VerticalAlignment="Center" />
                     <TextBlock Text="{Binding OutputState}" Margin="7,0,0,0"
                                Foreground="{DynamicResource AmberBrush}" FontWeight="SemiBold" FontSize="11" />
                   </StackPanel>
-                  <TextBlock Text="{Binding OutputLevelText}" HorizontalAlignment="Right" Foreground="{DynamicResource SecondaryBrush}" />
+                  <TextBlock Grid.Column="1" Text="{Binding OutputLevelText}" Margin="10,0,0,0"
+                             Foreground="{DynamicResource SecondaryBrush}" />
                 </Grid>
                 <ProgressBar Style="{StaticResource LevelStyle}" Foreground="{DynamicResource AmberBrush}" Value="{Binding OutputLevel}" />
               </StackPanel>
@@ -340,12 +345,20 @@
                       BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="13"
                       VerticalAlignment="Top">
                 <Grid Margin="14,13">
-                  <StackPanel Orientation="Horizontal">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel Grid.Column="0" Orientation="Horizontal">
                     <Ellipse Width="9" Height="9" Fill="{DynamicResource AmberBrush}" VerticalAlignment="Center" />
                     <TextBlock Text="{DynamicResource RemotePreferred}" Margin="8,0,0,0"
                                Foreground="{DynamicResource AmberBrush}" FontWeight="SemiBold" FontSize="11" />
                   </StackPanel>
-                  <TextBlock Text="{Binding OutputEndpointName}" HorizontalAlignment="Right" FontWeight="SemiBold" FontSize="11" />
+                  <TextBlock Grid.Column="2" Text="{Binding OutputEndpointName}"
+                             TextAlignment="Right" TextTrimming="CharacterEllipsis"
+                             ToolTip="{Binding OutputEndpointName}"
+                             FontWeight="SemiBold" FontSize="11" />
                 </Grid>
               </Border>
               <TextBlock Grid.Row="4" Text="{DynamicResource EndpointStandby}" Foreground="{DynamicResource SecondaryBrush}" FontSize="10" />
